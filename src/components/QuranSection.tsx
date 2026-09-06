@@ -22,10 +22,12 @@ import {
   ChevronRight,
   ChevronLeft,
   Loader2,
+  Mic,
 } from 'lucide-react';
 import { ALL_SURAHS, SurahMeta } from '../data/quranData';
 import { getSurahVerses, LoadedSurahData } from '../utils/quranReader';
 import { UserProgress } from '../types';
+import { QuranPageReader } from './QuranPageReader';
 
 interface QuranSectionProps {
   progress: UserProgress;
@@ -38,22 +40,8 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
   onUpdatePages,
   onOpenTrackerModal,
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'popular' | 'makki' | 'madani'>('all');
-  const [selectedJuz, setSelectedJuz] = useState<number | 'all'>('all');
-  const [activeSurah, setActiveSurah] = useState<SurahMeta | null>(null);
-
-  // Reader state
-  const [fontSize, setFontSize] = useState<number>(23);
-  const [readingMode, setReadingMode] = useState<'mushaf' | 'verseByVerse'>('mushaf');
-  const [surahVersesData, setSurahVersesData] = useState<LoadedSurahData | null>(null);
-  const [isLoadingVerses, setIsLoadingVerses] = useState(false);
-  const [verseSearch, setVerseSearch] = useState('');
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-
-  // Audio player state
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Main view mode: Physical Page-by-Page Quran (Default) vs Surah Index
+  const [viewMode, setViewMode] = useState<'mushafPage' | 'surahIndex'>('mushafPage');
 
   // Bookmark stored in localStorage
   const [bookmark, setBookmark] = useState<{ surahNumber: number; surahName: string; page: number } | null>(() => {
@@ -65,9 +53,41 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
     }
   });
 
+  const [currentMushafPage, setCurrentMushafPage] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('ouns_quran_bookmark');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.page && parsed.page >= 1 && parsed.page <= 604) {
+          return parsed.page;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return 1;
+  });
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'popular' | 'makki' | 'madani'>('all');
+  const [selectedJuz, setSelectedJuz] = useState<number | 'all'>('all');
+  const [activeSurah, setActiveSurah] = useState<SurahMeta | null>(null);
+
+  // Modal Reader state for individual surah verse-by-verse view if opened
+  const [fontSize, setFontSize] = useState<number>(23);
+  const [readingMode, setReadingMode] = useState<'mushaf' | 'verseByVerse'>('mushaf');
+  const [surahVersesData, setSurahVersesData] = useState<LoadedSurahData | null>(null);
+  const [isLoadingVerses, setIsLoadingVerses] = useState(false);
+  const [verseSearch, setVerseSearch] = useState('');
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  // Audio player state
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const [recordedFeedback, setRecordedFeedback] = useState<string | null>(null);
 
-  // Fetch full verses whenever activeSurah changes
+  // Fetch full verses whenever activeSurah modal changes
   useEffect(() => {
     if (!activeSurah) {
       setSurahVersesData(null);
@@ -122,6 +142,20 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
     });
   }, [searchQuery, filterType, selectedJuz]);
 
+  const handleSaveBookmarkFromPage = (page: number, surahName: string) => {
+    const item = {
+      surahNumber: 1,
+      surahName,
+      page,
+    };
+    setBookmark(item);
+    try {
+      localStorage.setItem('ouns_quran_bookmark', JSON.stringify(item));
+    } catch {
+      // ignore
+    }
+  };
+
   const handleSaveBookmark = (surah: SurahMeta) => {
     const item = {
       surahNumber: surah.number,
@@ -134,7 +168,7 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
     } catch {
       // ignore
     }
-    setRecordedFeedback(`تم حفظ سورة ${surah.name} كموضع القراءة المرجعي ✓`);
+    setRecordedFeedback(`تم حفظ سورة ${surah.name} كموضع القراءة المرجعي (صفحة ${surah.startPage}) ✓`);
     setTimeout(() => setRecordedFeedback(null), 3000);
   };
 
@@ -144,6 +178,12 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
     onUpdatePages(newTotal);
     setRecordedFeedback(`تم تسجيل قراءة سورة ${surah.name} (+${estimatedPages} صفحة في وردك) ✓`);
     setTimeout(() => setRecordedFeedback(null), 3500);
+  };
+
+  // Jump directly to physical Quran page for a given surah
+  const handleOpenSurahInMushafPage = (surah: SurahMeta) => {
+    setCurrentMushafPage(surah.startPage);
+    setViewMode('mushafPage');
   };
 
   // Audio recitation handler
@@ -172,7 +212,7 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
     }
   };
 
-  // Navigate to previous/next surah inside reader
+  // Navigate to previous/next surah inside modal reader
   const handleGoToSurah = (direction: 'prev' | 'next') => {
     if (!activeSurah) return;
     const currentIndex = ALL_SURAHS.findIndex((s) => s.number === activeSurah.number);
@@ -273,17 +313,44 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
               </div>
               <button
                 onClick={() => {
-                  const target = ALL_SURAHS.find((s) => s.number === bookmark.surahNumber) || ALL_SURAHS[0];
-                  setActiveSurah(target);
+                  setCurrentMushafPage(bookmark.page);
+                  setViewMode('mushafPage');
                 }}
                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white text-[#1E4535] font-bold hover:bg-[#F3EFE6] transition-all cursor-pointer shadow-xs text-xs"
               >
-                <span>متابعة القراءة الآن</span>
+                <span>متابعة القراءة الآن (صفحة {bookmark.page})</span>
                 <ArrowLeft className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
         </div>
+      </div>
+
+      {/* View Mode Switcher: Page-by-Page Physical Mushaf vs Surah Directory */}
+      <div className="flex items-center justify-center gap-2 p-1.5 bg-white border border-[#E8E2D5] rounded-2xl max-w-md mx-auto shadow-xs">
+        <button
+          onClick={() => setViewMode('mushafPage')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            viewMode === 'mushafPage'
+              ? 'bg-[#2D6A4F] text-white shadow-xs'
+              : 'text-[#736B63] hover:text-[#1F2421] hover:bg-[#FAF7F2]'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>المصحف صفحة بصفحة</span>
+        </button>
+
+        <button
+          onClick={() => setViewMode('surahIndex')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            viewMode === 'surahIndex'
+              ? 'bg-[#2D6A4F] text-white shadow-xs'
+              : 'text-[#736B63] hover:text-[#1F2421] hover:bg-[#FAF7F2]'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>فهرس السور (١١٤ سورة)</span>
+        </button>
       </div>
 
       {/* Feedback Alert if pages or bookmark recorded */}
@@ -302,27 +369,38 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
         </div>
       )}
 
-      {/* Search & Filter Controls */}
-      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-[#E8E2D5] shadow-xs space-y-4">
-        {/* Search input */}
-        <div className="relative">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="ابحث عن أي سورة بالاسم (الفاتحة، البقرة، الكهف، يس، الملك...) أو برقمها..."
-            className="w-full pr-11 pl-4 py-3 bg-[#FAF7F2] border border-[#E8E2D5] rounded-2xl text-xs sm:text-sm text-[#1F2421] placeholder-[#948B81] focus:outline-none focus:border-[#2D6A4F] focus:bg-white transition-all"
-          />
-          <Search className="w-5 h-5 text-[#8C827A] absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#8C827A] hover:text-[#403B36] cursor-pointer"
-            >
-              مسح
-            </button>
-          )}
-        </div>
+      {/* Main View: Page-by-Page Physical Reader or Surah Directory */}
+      {viewMode === 'mushafPage' ? (
+        <QuranPageReader
+          initialPage={currentMushafPage}
+          onUpdatePagesRead={onUpdatePages}
+          pagesReadToday={progress.quranPagesReadToday}
+          onSaveBookmark={handleSaveBookmarkFromPage}
+          savedBookmarkPage={bookmark?.page}
+        />
+      ) : (
+        <div className="space-y-6">
+          {/* Search & Filter Controls */}
+          <div className="bg-white rounded-3xl p-4 sm:p-5 border border-[#E8E2D5] shadow-xs space-y-4">
+            {/* Search input */}
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ابحث عن أي سورة بالاسم (الفاتحة، البقرة، الكهف، يس، الملك...) أو برقمها..."
+                className="w-full pr-11 pl-4 py-3 bg-[#FAF7F2] border border-[#E8E2D5] rounded-2xl text-xs sm:text-sm text-[#1F2421] placeholder-[#948B81] focus:outline-none focus:border-[#2D6A4F] focus:bg-white transition-all"
+              />
+              <Search className="w-5 h-5 text-[#8C827A] absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#8C827A] hover:text-[#403B36] cursor-pointer"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
 
         {/* Filter Chips */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[#F0ECE1]">
@@ -476,11 +554,23 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
               <div className="pt-2 border-t border-[#F5F2EB] flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => setActiveSurah(surah)}
-                    className="px-3.5 py-1.5 rounded-xl bg-[#2D6A4F] hover:bg-[#1E4535] text-white text-xs font-bold transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1"
+                    onClick={() => handleOpenSurahInMushafPage(surah)}
+                    className="px-3 py-1.5 rounded-xl bg-[#2D6A4F] hover:bg-[#1E4535] text-white text-xs font-bold transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1"
+                    title={`قراءة في المصحف صفحة بصفحة (صفحة ${surah.startPage})`}
                   >
                     <BookOpen className="w-3.5 h-3.5" />
-                    <span>قراءة السورة</span>
+                    <span>قراءة صفحة {surah.startPage}</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setCurrentMushafPage(surah.startPage);
+                      setViewMode('mushafPage');
+                    }}
+                    className="p-1.5 rounded-xl bg-[#2D6A4F]/10 hover:bg-[#2D6A4F]/20 text-[#2D6A4F] transition-all cursor-pointer"
+                    title={`تسميع صوتي تفاعلي لسورة ${surah.name}`}
+                  >
+                    <Mic className="w-3.5 h-3.5" />
                   </button>
 
                   <button
@@ -509,6 +599,8 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
           );
         })}
       </div>
+    </div>
+  )}
 
       {/* ================= Surah Reading Modal (All 114 Surahs with Full Verses) ================= */}
       {activeSurah && (
