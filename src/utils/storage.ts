@@ -1,9 +1,14 @@
-import { UserProgress, ReminderSetting, UserProfile } from '../types';
+import { UserProgress, ReminderSetting, UserProfile, UserTask } from '../types';
 import { INITIAL_REMINDERS } from '../data/remindersData';
 import { BASE_DAILY_ACTIVITIES } from '../data/dailyWorship';
 
 const STORAGE_KEY_PROGRESS = 'ouns_user_progress_real_v3';
 const STORAGE_KEY_REMINDERS = 'ouns_reminders_settings_v3';
+const STORAGE_KEY_TASKS_PREFIX = 'ouns_user_tasks_v1_';
+
+export function generateUserId(): string {
+  return 'usr_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+}
 
 export function getTodayDateString(date: Date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -38,6 +43,7 @@ export function getInitialProgress(): UserProgress {
   }
 
   const defaultProfile: UserProfile = {
+    id: generateUserId(),
     isGuest: true,
     name: 'متابع أُنس',
     createdAt: todayStr,
@@ -86,10 +92,13 @@ export function loadUserProgress(): UserProgress {
     }
     if (!parsed.userProfile) {
       parsed.userProfile = {
+        id: generateUserId(),
         isGuest: true,
         name: 'متابع أُنس',
         createdAt: todayStr,
       };
+    } else if (!parsed.userProfile.id) {
+      parsed.userProfile.id = generateUserId();
     }
 
     // Check if the calendar day rolled over:
@@ -223,4 +232,92 @@ export function resetTodayProgress(current: UserProgress): UserProgress {
   };
   saveUserProgress(reset);
   return reset;
+}
+
+// ---------------------------------------------------------------------------
+// Personal Daily Tasks Storage (Isolated per User & Scoped by Date)
+// ---------------------------------------------------------------------------
+
+export function getUserTasksStorageKey(userId: string): string {
+  const safeId = (userId || 'guest').trim();
+  return `${STORAGE_KEY_TASKS_PREFIX}${safeId}`;
+}
+
+export function loadAllUserTasks(userId: string): UserTask[] {
+  try {
+    const raw = localStorage.getItem(getUserTasksStorageKey(userId));
+    if (!raw) return [];
+    return JSON.parse(raw) as UserTask[];
+  } catch (err) {
+    console.error('Error loading tasks for user:', userId, err);
+    return [];
+  }
+}
+
+export function saveAllUserTasks(userId: string, tasks: UserTask[]): void {
+  try {
+    localStorage.setItem(getUserTasksStorageKey(userId), JSON.stringify(tasks));
+  } catch (err) {
+    console.error('Error saving tasks for user:', userId, err);
+  }
+}
+
+export function loadUserTasksForDate(userId: string, dateStr: string = getTodayDateString()): UserTask[] {
+  const all = loadAllUserTasks(userId);
+  return all.filter((t) => t.date === dateStr);
+}
+
+export function createUserTask(
+  userId: string,
+  text: string,
+  dateStr: string = getTodayDateString()
+): { newTask: UserTask; allTasks: UserTask[] } {
+  const all = loadAllUserTasks(userId);
+  const newTask: UserTask = {
+    id: 'tsk_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7),
+    userId,
+    date: dateStr,
+    text: text.trim(),
+    completed: false, // strictly false initially; never auto-completed
+    createdAt: Date.now(),
+  };
+  const updated = [newTask, ...all];
+  saveAllUserTasks(userId, updated);
+  return { newTask, allTasks: updated };
+}
+
+export function updateUserTaskText(userId: string, taskId: string, newText: string): UserTask[] {
+  const all = loadAllUserTasks(userId);
+  const updated = all.map((task) => {
+    if (task.id === taskId) {
+      return { ...task, text: newText.trim() };
+    }
+    return task;
+  });
+  saveAllUserTasks(userId, updated);
+  return updated;
+}
+
+export function toggleUserTaskCompleted(userId: string, taskId: string): UserTask[] {
+  const all = loadAllUserTasks(userId);
+  const updated = all.map((task) => {
+    if (task.id === taskId) {
+      const nextCompleted = !task.completed;
+      return {
+        ...task,
+        completed: nextCompleted,
+        completedAt: nextCompleted ? Date.now() : undefined,
+      };
+    }
+    return task;
+  });
+  saveAllUserTasks(userId, updated);
+  return updated;
+}
+
+export function deleteUserTask(userId: string, taskId: string): UserTask[] {
+  const all = loadAllUserTasks(userId);
+  const updated = all.filter((task) => task.id !== taskId);
+  saveAllUserTasks(userId, updated);
+  return updated;
 }

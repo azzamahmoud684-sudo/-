@@ -1,7 +1,7 @@
 {
   "name": "أُنس - رفيقك اليومي للعبادة",
   "description": "تطبيق أُنس الإسلامي: يومك مع أُنس، الأذكار اليومية، التذكيرات الذكية، متابعة الورد والصلوات، باب الخير، ومتابعة تقدمك.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["geolocation"],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

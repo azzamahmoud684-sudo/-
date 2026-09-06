@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { BottomNav, NavTab } from './components/BottomNav';
 import { HeroNowSection } from './components/HeroNowSection';
@@ -11,24 +11,81 @@ import { AdhkarViewerModal } from './components/AdhkarViewerModal';
 import { TasbeehModal } from './components/TasbeehModal';
 import { QuranModal } from './components/QuranModal';
 import { QuranSection } from './components/QuranSection';
+import { DailyTasksCard } from './components/DailyTasksCard';
+import { CreateTaskModal } from './components/CreateTaskModal';
+import { EditTaskModal } from './components/EditTaskModal';
+import { QiblaModal } from './components/QiblaModal';
 import {
   loadUserProgress,
   saveUserProgress,
   loadReminders,
   saveReminders,
   resetTodayProgress,
+  loadUserTasksForDate,
+  createUserTask,
+  updateUserTaskText,
+  toggleUserTaskCompleted,
+  deleteUserTask,
 } from './utils/storage';
-import { UserProgress, ActivityStatus, ReminderSetting } from './types';
+import { UserProgress, ActivityStatus, ReminderSetting, UserTask } from './types';
+import { ChevronLeft, Compass } from 'lucide-react';
 
 export default function App() {
   const [progress, setProgress] = useState<UserProgress>(() => loadUserProgress());
   const [reminders, setReminders] = useState<ReminderSetting[]>(() => loadReminders());
   const [activeTab, setActiveTab] = useState<NavTab>('home');
 
+  // Personal Daily Tasks state (strictly isolated per user ID)
+  const [todayTasks, setTodayTasks] = useState<UserTask[]>(() => {
+    const initialProgress = loadUserProgress();
+    return loadUserTasksForDate(initialProgress.userProfile?.id || 'usr_local');
+  });
+  const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<UserTask | null>(null);
+
+  // Qibla Modal state
+  const [isQiblaOpen, setIsQiblaOpen] = useState(false);
+
   // Modals state
   const [activeAdhkarCat, setActiveAdhkarCat] = useState<string | null>(null);
   const [isTasbeehOpen, setIsTasbeehOpen] = useState(false);
   const [isQuranOpen, setIsQuranOpen] = useState(false);
+
+  // Refresh tasks when user profile changes
+  useEffect(() => {
+    if (progress.userProfile?.id) {
+      setTodayTasks(loadUserTasksForDate(progress.userProfile.id));
+    }
+  }, [progress.userProfile?.id]);
+
+  // Tasks handlers
+  const handleAddTask = (text: string) => {
+    const userId = progress.userProfile?.id || 'usr_local';
+    const { newTask } = createUserTask(userId, text);
+    setTodayTasks((prev) => [newTask, ...prev]);
+  };
+
+  const handleToggleTask = (taskId: string) => {
+    const userId = progress.userProfile?.id || 'usr_local';
+    toggleUserTaskCompleted(userId, taskId);
+    setTodayTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, completed: !t.completed } : t))
+    );
+  };
+
+  const handleEditTask = (taskId: string, newText: string) => {
+    const userId = progress.userProfile?.id || 'usr_local';
+    updateUserTaskText(userId, taskId, newText);
+    setTodayTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, text: newText } : t))
+    );
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    const userId = progress.userProfile?.id || 'usr_local';
+    deleteUserTask(userId, taskId);
+    setTodayTasks((prev) => prev.filter((t) => t.id !== taskId));
+  };
 
   // Sync progress to localStorage
   const updateProgress = (updater: (prev: UserProgress) => UserProgress) => {
@@ -278,6 +335,7 @@ export default function App() {
         progress={progress}
         onOpenReminders={() => setActiveTab('reminders')}
         onOpenProgress={() => setActiveTab('progress')}
+        onOpenQibla={() => setIsQiblaOpen(true)}
         onUpdateProfileName={handleUpdateProfileName}
         onResetToday={handleResetToday}
       />
@@ -293,6 +351,75 @@ export default function App() {
               onNavigateToTab={(tab) => setActiveTab(tab)}
             />
 
+            {/* Home Quick Tools Grid: Qibla & Daily Aids */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Qibla Shortcut Card */}
+              <div
+                id="home-qibla-card"
+                onClick={() => setIsQiblaOpen(true)}
+                className="bg-white rounded-3xl p-4.5 sm:p-5 border border-[#E8E2D5] shadow-xs flex items-center justify-between cursor-pointer hover:border-[#2D6A4F]/40 hover:shadow-sm transition-all group"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-[#2D6A4F]/10 text-[#2D6A4F] flex items-center justify-center shrink-0 text-2xl group-hover:scale-105 transition-transform">
+                    🕋
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <h3 className="text-base font-bold text-[#1F2421]">القبلة 🕋</h3>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#FAF0E6] text-[#A25A19] font-semibold border border-[#E8D4BE]">
+                        بوصلة مباشرة
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#736B63] leading-relaxed">
+                      حدد اتجاه الكعبة المشرفة بدقة من موقعك الحالي.
+                    </p>
+                  </div>
+                </div>
+                <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-[#FAF7F2] text-[#2D6A4F] border border-[#E8E2D5] group-hover:translate-x-[-2px] transition-transform">
+                  <ChevronLeft className="w-4 h-4" />
+                </div>
+              </div>
+
+              {/* Quick Adhkar / Charity Link */}
+              <div
+                id="home-charity-card"
+                onClick={() => setActiveTab('charity')}
+                className="bg-white rounded-3xl p-4.5 sm:p-5 border border-[#E8E2D5] shadow-xs flex items-center justify-between cursor-pointer hover:border-[#2D6A4F]/40 hover:shadow-sm transition-all group"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-[#A25A19]/10 text-[#A25A19] flex items-center justify-center shrink-0 text-2xl group-hover:scale-105 transition-transform">
+                    🌱
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <h3 className="text-base font-bold text-[#1F2421]">باب الخير 🤝</h3>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#E8F5E9] text-[#2D6A4F] font-semibold border border-[#A5D6A7]">
+                        صدقة اليوم
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#736B63] leading-relaxed">
+                      مقترحات صدقة يومية يسيرة لتزكية المال والنفس.
+                    </p>
+                  </div>
+                </div>
+                <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-[#FAF7F2] text-[#2D6A4F] border border-[#E8E2D5] group-hover:translate-x-[-2px] transition-transform">
+                  <ChevronLeft className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
+
+            {/* مهام اليوم Compact Card on Home */}
+            <div id="home-daily-tasks-section">
+              <DailyTasksCard
+                tasks={todayTasks}
+                onAddTaskClick={() => setIsCreateTaskOpen(true)}
+                onToggleTask={handleToggleTask}
+                onEditTaskClick={(task) => setEditingTask(task)}
+                onDeleteTask={handleDeleteTask}
+                isCompact={true}
+              />
+            </div>
+
             {/* Daily Timeline snippet on Home Page */}
             <div className="pt-2">
               <DailyTimeline
@@ -300,6 +427,11 @@ export default function App() {
                 onUpdateActivityStatus={handleUpdateActivityStatus}
                 onStartActivity={handleStartActivity}
                 onQuickAddQuranPage={handleQuickAddQuranPage}
+                tasks={todayTasks}
+                onAddTaskClick={() => setIsCreateTaskOpen(true)}
+                onToggleTask={handleToggleTask}
+                onEditTaskClick={(task) => setEditingTask(task)}
+                onDeleteTask={handleDeleteTask}
               />
             </div>
           </div>
@@ -311,6 +443,11 @@ export default function App() {
             onUpdateActivityStatus={handleUpdateActivityStatus}
             onStartActivity={handleStartActivity}
             onQuickAddQuranPage={handleQuickAddQuranPage}
+            tasks={todayTasks}
+            onAddTaskClick={() => setIsCreateTaskOpen(true)}
+            onToggleTask={handleToggleTask}
+            onEditTaskClick={(task) => setEditingTask(task)}
+            onDeleteTask={handleDeleteTask}
           />
         )}
 
@@ -365,6 +502,7 @@ export default function App() {
         />
       )}
 
+      {/* Quran Tracker Modal */}
       {isQuranOpen && (
         <QuranModal
           progress={progress}
@@ -376,6 +514,27 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Create Task Modal */}
+      <CreateTaskModal
+        isOpen={isCreateTaskOpen}
+        onClose={() => setIsCreateTaskOpen(false)}
+        onAddTask={handleAddTask}
+      />
+
+      {/* Edit Task Modal */}
+      <EditTaskModal
+        task={editingTask}
+        isOpen={Boolean(editingTask)}
+        onClose={() => setEditingTask(null)}
+        onSave={handleEditTask}
+      />
+
+      {/* Qibla Direction Modal */}
+      <QiblaModal
+        isOpen={isQiblaOpen}
+        onClose={() => setIsQiblaOpen(false)}
+      />
 
       {/* Bottom Navigation */}
       <BottomNav activeTab={activeTab} onChangeTab={setActiveTab} />

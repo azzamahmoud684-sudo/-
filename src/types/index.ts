@@ -53,10 +53,21 @@ export interface CharityCause {
 }
 
 export interface UserProfile {
+  id: string;
   isGuest: boolean;
   name: string;
   email?: string;
   createdAt: string;
+}
+
+export interface UserTask {
+  id: string;
+  userId: string;
+  date: string; // YYYY-MM-DD
+  text: string;
+  completed: boolean;
+  createdAt: number;
+  completedAt?: number;
 }
 
 export interface UserProgress {

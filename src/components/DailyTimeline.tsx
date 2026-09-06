@@ -16,18 +16,24 @@ import {
   Circle,
   HelpCircle,
 } from 'lucide-react';
-import { DailyActivity, TimePeriod, ActivityStatus, UserProgress } from '../types';
+import { DailyActivity, TimePeriod, ActivityStatus, UserProgress, UserTask } from '../types';
 import {
   BASE_DAILY_ACTIVITIES,
   getCurrentTimePeriod,
   PERIOD_META,
 } from '../data/dailyWorship';
+import { DailyTasksCard } from './DailyTasksCard';
 
 interface DailyTimelineProps {
   progress: UserProgress;
   onUpdateActivityStatus: (activityId: string, newStatus: ActivityStatus) => void;
   onStartActivity: (activityType: string) => void;
   onQuickAddQuranPage?: () => void;
+  tasks?: UserTask[];
+  onAddTaskClick?: () => void;
+  onToggleTask?: (taskId: string) => void;
+  onEditTaskClick?: (task: UserTask) => void;
+  onDeleteTask?: (taskId: string) => void;
 }
 
 export const DailyTimeline: React.FC<DailyTimelineProps> = ({
@@ -35,6 +41,11 @@ export const DailyTimeline: React.FC<DailyTimelineProps> = ({
   onUpdateActivityStatus,
   onStartActivity,
   onQuickAddQuranPage,
+  tasks,
+  onAddTaskClick,
+  onToggleTask,
+  onEditTaskClick,
+  onDeleteTask,
 }) => {
   const currentSystemPeriod = getCurrentTimePeriod();
   const [selectedPeriodFilter, setSelectedPeriodFilter] = useState<TimePeriod | 'all'>('all');
@@ -383,6 +394,32 @@ export const DailyTimeline: React.FC<DailyTimelineProps> = ({
           );
         })}
       </div>
+
+      {/* مهام اليوم الشخصية - مدمجة في مسار اليوم ومنفصلة عن العبادات */}
+      {tasks && onAddTaskClick && onToggleTask && onEditTaskClick && onDeleteTask && (
+        <div className="mt-8 pt-6 border-t border-[#E8E2D5]">
+          <div className="mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-base">📝</span>
+              <h3 className="text-base font-bold text-[#1F2421]">مهام اليوم الشخصية</h3>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#FAF0E6] text-[#A25A19] font-medium border border-[#E8D4BE]">
+                منفصلة عن سجل العبادات
+              </span>
+            </div>
+            <p className="text-xs text-[#736B63] mt-0.5">
+              مساحتك الخاصة لكتابة ومتابعة مهامك اليومية (مذاكرة، عمل، أهداف) دون خلطها مع أداء الصلوات والأوراد.
+            </p>
+          </div>
+          <DailyTasksCard
+            tasks={tasks}
+            onAddTaskClick={onAddTaskClick}
+            onToggleTask={onToggleTask}
+            onEditTaskClick={onEditTaskClick}
+            onDeleteTask={onDeleteTask}
+            isCompact={false}
+          />
+        </div>
+      )}
     </div>
   );
 };
