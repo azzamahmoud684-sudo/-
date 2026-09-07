@@ -11,6 +11,9 @@ import { AdhkarViewerModal } from './components/AdhkarViewerModal';
 import { TasbeehModal } from './components/TasbeehModal';
 import { QuranModal } from './components/QuranModal';
 import { QuranSection } from './components/QuranSection';
+import { PrayerSection } from './components/PrayerSection';
+import { QuranAudioPlayerBar } from './components/QuranAudioPlayerBar';
+import { DEFAULT_RECITER_ID } from './utils/quranAudio';
 import { DailyTasksCard } from './components/DailyTasksCard';
 import { CreateTaskModal } from './components/CreateTaskModal';
 import { EditTaskModal } from './components/EditTaskModal';
@@ -34,6 +37,11 @@ export default function App() {
   const [progress, setProgress] = useState<UserProgress>(() => loadUserProgress());
   const [reminders, setReminders] = useState<ReminderSetting[]>(() => loadReminders());
   const [activeTab, setActiveTab] = useState<NavTab>('home');
+
+  // Quran Audio Reciter state
+  const [activeAudioSurah, setActiveAudioSurah] = useState<number | null>(null);
+  const [isSurahAudioPlaying, setIsSurahAudioPlaying] = useState(false);
+  const [selectedReciterId, setSelectedReciterId] = useState<string>(DEFAULT_RECITER_ID);
 
   // Personal Daily Tasks state (strictly isolated per user ID)
   const [todayTasks, setTodayTasks] = useState<UserTask[]>(() => {
@@ -206,7 +214,7 @@ export default function App() {
         setActiveTab('quran');
         break;
       case 'prayer':
-        setActiveTab('timeline');
+        setActiveTab('prayer');
         break;
       case 'worship':
         handleUpdateActivityStatus('act-daily-worship', 'completed');
@@ -326,6 +334,16 @@ export default function App() {
   const handleResetToday = () => {
     const fresh = resetTodayProgress(progress);
     setProgress(fresh);
+  };
+
+  // Play/toggle Surah Sheikh audio recitation
+  const handlePlaySurahAudio = (surahNumber: number) => {
+    if (activeAudioSurah === surahNumber) {
+      setIsSurahAudioPlaying((prev) => !prev);
+    } else {
+      setActiveAudioSurah(surahNumber);
+      setIsSurahAudioPlaying(true);
+    }
   };
 
   return (
@@ -451,11 +469,28 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'prayer' && (
+          <PrayerSection
+            progress={progress}
+            onUpdatePrayersCompleted={(prayers) => {
+              updateProgress((prev) => ({
+                ...prev,
+                prayersCompletedToday: prayers,
+              }));
+            }}
+            onOpenQibla={() => setIsQiblaOpen(true)}
+            onOpenAdhkarAfterPrayer={() => setActiveAdhkarCat('after_prayer')}
+          />
+        )}
+
         {activeTab === 'quran' && (
           <QuranSection
             progress={progress}
             onUpdatePages={handleUpdateQuranPages}
             onOpenTrackerModal={() => setIsQuranOpen(true)}
+            onPlaySurahAudio={handlePlaySurahAudio}
+            activeAudioSurah={activeAudioSurah}
+            isAudioPlaying={isSurahAudioPlaying}
           />
         )}
 
@@ -535,6 +570,29 @@ export default function App() {
         isOpen={isQiblaOpen}
         onClose={() => setIsQiblaOpen(false)}
       />
+
+      {/* Floating Quran Audio Player Bar (Sheikh Recitation) */}
+      {activeAudioSurah && (
+        <QuranAudioPlayerBar
+          currentSurahNumber={activeAudioSurah}
+          surahNumber={activeAudioSurah}
+          isPlaying={isSurahAudioPlaying}
+          reciterId={selectedReciterId}
+          onTogglePlay={() => setIsSurahAudioPlaying((prev) => !prev)}
+          onChangeSurah={(num) => {
+            setActiveAudioSurah(num);
+            setIsSurahAudioPlaying(true);
+          }}
+          onChangeReciter={(id) => setSelectedReciterId(id)}
+          onClose={() => {
+            setActiveAudioSurah(null);
+            setIsSurahAudioPlaying(false);
+          }}
+          onNavigateToSurah={() => {
+            setActiveTab('quran');
+          }}
+        />
+      )}
 
       {/* Bottom Navigation */}
       <BottomNav activeTab={activeTab} onChangeTab={setActiveTab} />

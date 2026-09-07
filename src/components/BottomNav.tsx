@@ -1,7 +1,7 @@
 import React from 'react';
-import { Home, Clock, BookOpen, Sparkles, HeartHandshake, Award } from 'lucide-react';
+import { Home, Compass, BookOpen, Sparkles, Clock, Award, HeartHandshake } from 'lucide-react';
 
-export type NavTab = 'home' | 'timeline' | 'quran' | 'adhkar' | 'charity' | 'progress' | 'reminders';
+export type NavTab = 'home' | 'prayer' | 'timeline' | 'quran' | 'adhkar' | 'charity' | 'progress' | 'reminders';
 
 interface BottomNavProps {
   activeTab: NavTab;
@@ -11,10 +11,10 @@ interface BottomNavProps {
 export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab }) => {
   const tabs: { id: NavTab; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'home', label: 'الرئيسية', icon: Home },
-    { id: 'timeline', label: 'يومك', icon: Clock },
+    { id: 'prayer', label: 'الصلاة', icon: Compass },
     { id: 'quran', label: 'القرآن', icon: BookOpen },
     { id: 'adhkar', label: 'الأذكار', icon: Sparkles },
-    { id: 'charity', label: 'باب الخير', icon: HeartHandshake },
+    { id: 'timeline', label: 'يومك', icon: Clock },
     { id: 'progress', label: 'تقدمي', icon: Award },
   ];
 

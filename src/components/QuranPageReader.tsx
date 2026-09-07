@@ -12,6 +12,8 @@ import {
   Check,
   X,
   Volume2,
+  Pause,
+  Play,
   Mic,
   Copy,
   Layers,
@@ -37,6 +39,9 @@ interface QuranPageReaderProps {
   pagesReadToday?: number;
   onSaveBookmark?: (page: number, surahName: string) => void;
   savedBookmarkPage?: number;
+  onPlaySurahAudio?: (surahNumber: number) => void;
+  isAudioPlaying?: boolean;
+  currentAudioSurah?: number | null;
 }
 
 export const QuranPageReader: React.FC<QuranPageReaderProps> = ({
@@ -45,6 +50,9 @@ export const QuranPageReader: React.FC<QuranPageReaderProps> = ({
   pagesReadToday = 0,
   onSaveBookmark,
   savedBookmarkPage = 1,
+  onPlaySurahAudio,
+  isAudioPlaying = false,
+  currentAudioSurah = null,
 }) => {
   const [currentPage, setCurrentPage] = useState<number>(() => {
     const p = Math.min(604, Math.max(1, initialPage));
@@ -334,8 +342,33 @@ export const QuranPageReader: React.FC<QuranPageReaderProps> = ({
           </button>
         </div>
 
-        {/* Action Buttons: Voice Corrector, Bookmark, Record */}
+        {/* Action Buttons: Voice Corrector, Surah Audio Reciter, Bookmark, Record */}
         <div className="flex items-center gap-2">
+          {/* Audio Recitation of Primary Surah on page */}
+          {onPlaySurahAudio && pageData && pageData.surahsOnPage.length > 0 && (
+            <button
+              onClick={() => onPlaySurahAudio(pageData.surahsOnPage[0].number)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-95 ${
+                currentAudioSurah === pageData.surahsOnPage[0].number && isAudioPlaying
+                  ? 'bg-[#1E4535] text-white ring-2 ring-[#D4A373]'
+                  : 'bg-[#D4A373] text-[#1F2421] hover:bg-[#c49260]'
+              }`}
+              title={`استمع لصوت الشيخ لسورة ${pageData.surahsOnPage[0].name}`}
+            >
+              {currentAudioSurah === pageData.surahsOnPage[0].number && isAudioPlaying ? (
+                <>
+                  <Pause className="w-3.5 h-3.5 fill-current" />
+                  <span>إيقاف التلاوة</span>
+                </>
+              ) : (
+                <>
+                  <Volume2 className="w-3.5 h-3.5" />
+                  <span>صوت الشيخ 🎧</span>
+                </>
+              )}
+            </button>
+          )}
+
           {/* Tarteel Voice Tester Trigger */}
           <button
             onClick={() => {

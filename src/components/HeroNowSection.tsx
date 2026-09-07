@@ -3,11 +3,12 @@ import { Play, ArrowLeft, Clock, BookOpen, CheckCircle2, Sparkles, HeartHandshak
 import { UserProgress, TimePeriod } from '../types';
 import { getNextPrayerCountdown, getTodayPrayerTimes } from '../data/prayerTimes';
 import { getCurrentTimePeriod, PERIOD_META, getTodayWorship } from '../data/dailyWorship';
+import { NavTab } from './BottomNav';
 
 interface HeroNowSectionProps {
   progress: UserProgress;
   onStartActivity: (activityType: string) => void;
-  onNavigateToTab: (tab: 'timeline' | 'adhkar' | 'charity' | 'progress') => void;
+  onNavigateToTab: (tab: NavTab) => void;
 }
 
 export const HeroNowSection: React.FC<HeroNowSectionProps> = ({
@@ -187,7 +188,11 @@ export const HeroNowSection: React.FC<HeroNowSectionProps> = ({
       {/* Triplet Indicators: Next Prayer Countdown | Quran Progress | Today Completion */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Next Prayer Countdown Card */}
-        <div className="bg-white rounded-2xl p-4 border border-[#E8E2D5] shadow-xs flex items-center justify-between sm:flex-col sm:items-start sm:justify-between">
+        <div
+          onClick={() => onNavigateToTab('prayer')}
+          className="bg-white rounded-2xl p-4 border border-[#E8E2D5] shadow-xs flex items-center justify-between sm:flex-col sm:items-start sm:justify-between cursor-pointer hover:border-[#2D6A4F]/40 transition-all group"
+          title="عرض مواقيت الصلاة والأذان التفصيلية"
+        >
           <div className="flex items-center gap-2.5">
             <div className="p-2.5 rounded-xl bg-[#2D6A4F]/10 text-[#2D6A4F]">
               <Clock className="w-5 h-5" />

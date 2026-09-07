@@ -33,12 +33,18 @@ interface QuranSectionProps {
   progress: UserProgress;
   onUpdatePages: (pages: number) => void;
   onOpenTrackerModal?: () => void;
+  onPlaySurahAudio?: (surahNumber: number) => void;
+  activeAudioSurah?: number | null;
+  isAudioPlaying?: boolean;
 }
 
 export const QuranSection: React.FC<QuranSectionProps> = ({
   progress,
   onUpdatePages,
   onOpenTrackerModal,
+  onPlaySurahAudio,
+  activeAudioSurah = null,
+  isAudioPlaying = false,
 }) => {
   // Main view mode: Physical Page-by-Page Quran (Default) vs Surah Index
   const [viewMode, setViewMode] = useState<'mushafPage' | 'surahIndex'>('mushafPage');
@@ -377,6 +383,9 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
           pagesReadToday={progress.quranPagesReadToday}
           onSaveBookmark={handleSaveBookmarkFromPage}
           savedBookmarkPage={bookmark?.page}
+          onPlaySurahAudio={onPlaySurahAudio}
+          isAudioPlaying={isAudioPlaying}
+          currentAudioSurah={activeAudioSurah}
         />
       ) : (
         <div className="space-y-6">
@@ -551,15 +560,44 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-2 border-t border-[#F5F2EB] flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
+              <div className="pt-2 border-t border-[#F5F2EB] flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <button
                     onClick={() => handleOpenSurahInMushafPage(surah)}
                     className="px-3 py-1.5 rounded-xl bg-[#2D6A4F] hover:bg-[#1E4535] text-white text-xs font-bold transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1"
                     title={`قراءة في المصحف صفحة بصفحة (صفحة ${surah.startPage})`}
                   >
                     <BookOpen className="w-3.5 h-3.5" />
-                    <span>قراءة صفحة {surah.startPage}</span>
+                    <span>صفحة {surah.startPage}</span>
+                  </button>
+
+                  {/* Sheikh Audio Recitation Button */}
+                  <button
+                    onClick={() => {
+                      if (onPlaySurahAudio) {
+                        onPlaySurahAudio(surah.number);
+                      } else {
+                        handleToggleAudio(surah.number);
+                      }
+                    }}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1 shadow-2xs ${
+                      activeAudioSurah === surah.number && isAudioPlaying
+                        ? 'bg-[#1E4535] text-white ring-2 ring-[#D4A373]'
+                        : 'bg-[#D4A373]/20 hover:bg-[#D4A373] text-[#7A4E1D] hover:text-white'
+                    }`}
+                    title={`تشغيل صوت الشيخ لسورة ${surah.name}`}
+                  >
+                    {activeAudioSurah === surah.number && isAudioPlaying ? (
+                      <>
+                        <Pause className="w-3.5 h-3.5 fill-current" />
+                        <span>إيقاف</span>
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="w-3.5 h-3.5" />
+                        <span>صوت الشيخ 🎧</span>
+                      </>
+                    )}
                   </button>
 
                   <button
@@ -636,16 +674,32 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
               <div className="flex items-center gap-2">
                 {/* Audio Reciter button */}
                 <button
-                  onClick={() => handleToggleAudio(activeSurah.number)}
+                  onClick={() => {
+                    if (onPlaySurahAudio) {
+                      onPlaySurahAudio(activeSurah.number);
+                    } else {
+                      handleToggleAudio(activeSurah.number);
+                    }
+                  }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    isPlayingAudio
-                      ? 'bg-[#B8860B] text-white shadow-xs'
+                    activeAudioSurah === activeSurah.number && isAudioPlaying
+                      ? 'bg-[#1E4535] text-white shadow-xs ring-2 ring-[#D4A373]'
                       : 'bg-[#FAF7F2] text-[#403B36] hover:bg-[#F3EFE6] border border-[#E8E2D5]'
                   }`}
-                  title={isPlayingAudio ? 'إيقاف التلاوة' : 'استماع للتلاوة بصوت الشيخ مشاري العفاسي'}
+                  title={
+                    activeAudioSurah === activeSurah.number && isAudioPlaying
+                      ? 'إيقاف التلاوة'
+                      : 'استماع لصوت الشيخ'
+                  }
                 >
-                  {isPlayingAudio ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 text-[#2D6A4F]" />}
-                  <span className="hidden sm:inline">{isPlayingAudio ? 'إيقاف الصوت' : 'استماع للتلاوة'}</span>
+                  {activeAudioSurah === activeSurah.number && isAudioPlaying ? (
+                    <Pause className="w-3.5 h-3.5 fill-current" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 text-[#2D6A4F] fill-[#2D6A4F]" />
+                  )}
+                  <span className="hidden sm:inline">
+                    {activeAudioSurah === activeSurah.number && isAudioPlaying ? 'إيقاف الصوت' : 'صوت الشيخ 🎧'}
+                  </span>
                 </button>
 
                 {/* Close Button */}

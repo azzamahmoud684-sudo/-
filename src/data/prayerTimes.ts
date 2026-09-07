@@ -1,3 +1,10 @@
+import {
+  calculatePrayerTimes,
+  loadUserPrayerLocation,
+  formatTime24,
+  UserLocationConfig,
+} from '../utils/prayerCalculator';
+
 export interface PrayerTimeInfo {
   id: 'fajr' | 'shuruq' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
   name: string;
@@ -7,33 +14,30 @@ export interface PrayerTimeInfo {
   isNext: boolean;
 }
 
-export function getTodayPrayerTimes(baseDate: Date = new Date()): PrayerTimeInfo[] {
-  // Approximate standard calculation for Cairo / Mecca standard times (adaptable offset)
-  // fajr ~ 04:35, shuruq ~ 06:00, dhuhr ~ 12:45, asr ~ 16:15, maghrib ~ 19:10, isha ~ 20:30
-  const y = baseDate.getFullYear();
-  const m = baseDate.getMonth();
-  const d = baseDate.getDate();
-
-  const prayers = [
-    { id: 'fajr' as const, name: 'الفجر', h: 4, min: 38 },
-    { id: 'shuruq' as const, name: 'الشروق', h: 6, min: 2 },
-    { id: 'dhuhr' as const, name: 'الظهر', h: 12, min: 46 },
-    { id: 'asr' as const, name: 'العصر', h: 16, min: 18 },
-    { id: 'maghrib' as const, name: 'المغرب', h: 19, min: 14 },
-    { id: 'isha' as const, name: 'العشاء', h: 20, min: 32 },
-  ];
-
+export function getTodayPrayerTimes(
+  baseDate: Date = new Date(),
+  customLocation?: UserLocationConfig
+): PrayerTimeInfo[] {
+  const loc = customLocation || loadUserPrayerLocation();
+  const times = calculatePrayerTimes(baseDate, loc.lat, loc.lon, loc.method, loc.madhab);
   const now = baseDate.getTime();
 
+  const prayers: { id: PrayerTimeInfo['id']; name: string; date: Date }[] = [
+    { id: 'fajr', name: 'الفجر', date: times.fajr },
+    { id: 'shuruq', name: 'الشروق', date: times.shuruq },
+    { id: 'dhuhr', name: 'الظهر', date: times.dhuhr },
+    { id: 'asr', name: 'العصر', date: times.asr },
+    { id: 'maghrib', name: 'المغرب', date: times.maghrib },
+    { id: 'isha', name: 'العشاء', date: times.isha },
+  ];
+
   const list: PrayerTimeInfo[] = prayers.map((p) => {
-    const pDate = new Date(y, m, d, p.h, p.min, 0);
-    const timeStr = `${String(p.h).padStart(2, '0')}:${String(p.min).padStart(2, '0')}`;
     return {
       id: p.id,
       name: p.name,
-      time: timeStr,
-      timestamp: pDate,
-      isPassed: pDate.getTime() < now,
+      time: formatTime24(p.date),
+      timestamp: p.date,
+      isPassed: p.date.getTime() < now,
       isNext: false,
     };
   });
@@ -42,7 +46,7 @@ export function getTodayPrayerTimes(baseDate: Date = new Date()): PrayerTimeInfo
   const nextIdx = list.findIndex((p) => p.timestamp.getTime() > now);
   if (nextIdx !== -1) {
     list[nextIdx].isNext = true;
-  } else {
+  } else if (list.length > 0) {
     // next is tomorrow's Fajr
     list[0].isNext = true;
   }
@@ -50,7 +54,10 @@ export function getTodayPrayerTimes(baseDate: Date = new Date()): PrayerTimeInfo
   return list;
 }
 
-export function getNextPrayerCountdown(baseDate: Date = new Date()): {
+export function getNextPrayerCountdown(
+  baseDate: Date = new Date(),
+  customLocation?: UserLocationConfig
+): {
   nextPrayerName: string;
   nextPrayerTime: string;
   remainingHours: number;
@@ -58,7 +65,8 @@ export function getNextPrayerCountdown(baseDate: Date = new Date()): {
   remainingSeconds: number;
   formattedCountdown: string;
 } {
-  const prayers = getTodayPrayerTimes(baseDate);
+  const loc = customLocation || loadUserPrayerLocation();
+  const prayers = getTodayPrayerTimes(baseDate, loc);
   const now = baseDate.getTime();
 
   let next = prayers.find((p) => p.id !== 'shuruq' && p.timestamp.getTime() > now);
@@ -73,12 +81,12 @@ export function getNextPrayerCountdown(baseDate: Date = new Date()): {
     prayerTimeStr = next.time;
   } else {
     // Tomorrow Fajr
-    const tomorrowFajr = new Date(baseDate);
-    tomorrowFajr.setDate(tomorrowFajr.getDate() + 1);
-    tomorrowFajr.setHours(4, 38, 0, 0);
-    targetTime = tomorrowFajr.getTime();
+    const tomorrow = new Date(baseDate);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowTimes = calculatePrayerTimes(tomorrow, loc.lat, loc.lon, loc.method, loc.madhab);
+    targetTime = tomorrowTimes.fajr.getTime();
     prayerName = 'الفجر';
-    prayerTimeStr = '04:38';
+    prayerTimeStr = formatTime24(tomorrowTimes.fajr);
   }
 
   const diffMs = Math.max(0, targetTime - now);
