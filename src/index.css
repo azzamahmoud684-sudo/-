@@ -1,1 +1,13 @@
 @import "tailwindcss";
+
+@layer utilities {
+  .font-quran {
+    font-family: 'Amiri Quran', 'Amiri', 'Scheherazade New', serif;
+    font-feature-settings: "cv01" on, "calt" on, "liga" on;
+    text-rendering: optimizeLegibility;
+    word-break: normal;
+    overflow-wrap: break-word;
+    hyphens: none;
+    -webkit-font-smoothing: antialiased;
+  }
+}

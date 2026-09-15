@@ -437,6 +437,16 @@ export const BASE_DAILY_ACTIVITIES: Omit<DailyActivity, 'status'>[] = [
     defaultTimeRange: '21:00 - 23:30',
   },
   {
+    id: 'act-qiyam',
+    title: 'قيام الليل',
+    subtitle: 'ركعتان في جوف الليل وسكينة الخلوة بالله',
+    period: 'night',
+    type: 'prayer',
+    iconName: 'MoonStar',
+    actionTarget: 'prayer',
+    defaultTimeRange: '22:00 - 04:30',
+  },
+  {
     id: 'act-witr',
     title: 'الوتر',
     subtitle: 'ركعة أو ثلاث؛ ختام صلاة الليل',

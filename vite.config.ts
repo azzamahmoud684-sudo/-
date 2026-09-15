@@ -6,6 +6,12 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    define: {
+      'import.meta.env.VITE_VAPID_PUBLIC_KEY': JSON.stringify(
+        process.env.VITE_VAPID_PUBLIC_KEY ||
+          'BNZ2K6EyIYxITp4N0Gf547OroRMvzghNEoHZJ-zlGlYzR-4kMUkCrcLxwx0Vhhh9gUAGnaUfXIVY7fV5AtTjDX4'
+      ),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

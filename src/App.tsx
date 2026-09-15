@@ -18,8 +18,14 @@ import { DailyTasksCard } from './components/DailyTasksCard';
 import { CreateTaskModal } from './components/CreateTaskModal';
 import { EditTaskModal } from './components/EditTaskModal';
 import { UpcomingOccasionsSection } from './components/UpcomingOccasionsSection';
-import { PushNotificationModal } from './components/PushNotificationModal';
-import { registerPushServiceWorker } from './utils/pushManager';
+import { HomeDailyDhikrCard } from './components/HomeDailyDhikrCard';
+import { HomeDailyAchievementBar } from './components/HomeDailyAchievementBar';
+import { HomeDailyWirdCard } from './components/HomeDailyWirdCard';
+import { HomePrayersCard } from './components/HomePrayersCard';
+import { HomeDashboardGrid, DashboardCardItem } from './components/HomeDashboardGrid';
+import { HomeNearestOccasionCard } from './components/HomeNearestOccasionCard';
+import { OccasionsModal } from './components/OccasionsModal';
+import { DailyTasksModal } from './components/DailyTasksModal';
 import {
   loadUserProgress,
   saveUserProgress,
@@ -64,12 +70,8 @@ export default function App() {
   const [activeAdhkarCat, setActiveAdhkarCat] = useState<string | null>(null);
   const [isTasbeehOpen, setIsTasbeehOpen] = useState(false);
   const [isQuranOpen, setIsQuranOpen] = useState(false);
-  const [isPushModalOpen, setIsPushModalOpen] = useState(false);
-
-  // Initialize Web Push Service Worker
-  useEffect(() => {
-    registerPushServiceWorker();
-  }, []);
+  const [isOccasionsModalOpen, setIsOccasionsModalOpen] = useState(false);
+  const [isTasksModalOpen, setIsTasksModalOpen] = useState(false);
 
   // Refresh tasks helper
   const refreshTasks = (date: string = selectedTaskDate) => {
@@ -156,6 +158,7 @@ export default function App() {
         if (activityId === 'act-maghrib' && !prayers.includes('maghrib')) prayers.push('maghrib');
         if (activityId === 'act-isha' && !prayers.includes('isha')) prayers.push('isha');
         if (activityId === 'act-witr' && !prayers.includes('witr')) prayers.push('witr');
+        if (activityId === 'act-qiyam' && !prayers.includes('qiyam')) prayers.push('qiyam');
 
         // Adhkar mappings
         if (activityId === 'act-morning-adhkar') {
@@ -200,6 +203,7 @@ export default function App() {
         if (activityId === 'act-maghrib') prayers = prayers.filter((p) => p !== 'maghrib');
         if (activityId === 'act-isha') prayers = prayers.filter((p) => p !== 'isha');
         if (activityId === 'act-witr') prayers = prayers.filter((p) => p !== 'witr');
+        if (activityId === 'act-qiyam') prayers = prayers.filter((p) => p !== 'qiyam');
       }
 
       return {
@@ -211,6 +215,31 @@ export default function App() {
         sleepAdhkarCompleted: sleepAdhkar,
         prayersCompletedToday: prayers,
         adhkarItemsCompleted: adhkarCounts,
+      };
+    });
+  };
+
+  // Toggle single prayer (fajr, dhuhr, asr, maghrib, isha, witr, qiyam)
+  const handleTogglePrayer = (prayerId: string) => {
+    updateProgress((prev) => {
+      const currentList = prev.prayersCompletedToday || [];
+      const isDone = currentList.includes(prayerId);
+      const updatedPrayers = isDone
+        ? currentList.filter((id) => id !== prayerId)
+        : [...currentList, prayerId];
+
+      const actId = `act-${prayerId}`;
+      let completed = [...prev.completedActivities];
+      if (isDone) {
+        completed = completed.filter((id) => id !== actId);
+      } else {
+        if (!completed.includes(actId)) completed.push(actId);
+      }
+
+      return {
+        ...prev,
+        prayersCompletedToday: updatedPrayers,
+        completedActivities: completed,
       };
     });
   };
@@ -373,7 +402,6 @@ export default function App() {
         progress={progress}
         onOpenReminders={() => setActiveTab('reminders')}
         onOpenProgress={() => setActiveTab('progress')}
-        onOpenPushModal={() => setIsPushModalOpen(true)}
         onUpdateProfileName={handleUpdateProfileName}
         onResetToday={handleResetToday}
       />
@@ -381,133 +409,99 @@ export default function App() {
       {/* Main Tab Content */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-5 sm:py-6">
         {activeTab === 'home' && (
-          <div className="space-y-6">
-            {/* Hero: "دلوقتي مع أُنس 🤍" */}
-            <HeroNowSection
+          <div className="space-y-5 sm:space-y-6 animate-in fade-in duration-300">
+            {/* 1. Header: أُنس 🤍 - رفيقك ليومٍ أقرب إلى الله */}
+            <div className="text-center py-2 sm:py-3">
+              <h1 className="text-3xl sm:text-4xl font-bold font-['Tajawal'] text-[#1F2421] tracking-tight">
+                أُنس 🤍
+              </h1>
+              <p className="text-sm sm:text-base text-[#736B63] mt-1.5 font-medium">
+                رفيقك ليومٍ أقرب إلى الله
+              </p>
+            </div>
+
+            {/* 2. Small elegant Daily Dhikr Card (ذكر اليوم) */}
+            <HomeDailyDhikrCard onOpenTasbeeh={() => setIsTasbeehOpen(true)} />
+
+            {/* 3. إنجاز اليوم (0 من 14 عبادة) */}
+            <HomeDailyAchievementBar progress={progress} />
+
+            {/* 4. متابعة الورد: وردي اليوم (0 من 4 صفحات) */}
+            <HomeDailyWirdCard
               progress={progress}
-              onStartActivity={handleStartActivity}
-              onNavigateToTab={(tab) => setActiveTab(tab)}
+              onOpenQuran={() => setActiveTab('quran')}
             />
 
-            {/* Home Quick Tools Grid: Daily Aids */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Quick Tasbeeh Shortcut Card */}
-              <div
-                id="home-tasbeeh-card"
-                onClick={() => setIsTasbeehOpen(true)}
-                className="bg-white rounded-3xl p-4.5 sm:p-5 border border-[#E8E2D5] shadow-xs flex items-center justify-between cursor-pointer hover:border-[#2D6A4F]/40 hover:shadow-sm transition-all group"
-              >
-                <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-[#2D6A4F]/10 text-[#2D6A4F] flex items-center justify-center shrink-0 text-2xl group-hover:scale-105 transition-transform">
-                    📿
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <h3 className="text-base font-bold text-[#1F2421]">السبحة الإلكترونية 📿</h3>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#E8F5E9] text-[#2D6A4F] font-semibold border border-[#A5D6A7]">
-                        تسبيح واستغفار
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#736B63] leading-relaxed">
-                      عداد أذكار ذكي مع حفظ الأوراد ومؤثرات اهتزاز.
-                    </p>
-                  </div>
-                </div>
-                <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-[#FAF7F2] text-[#2D6A4F] border border-[#E8E2D5] group-hover:translate-x-[-2px] transition-transform">
-                  <ChevronLeft className="w-4 h-4" />
-                </div>
-              </div>
+            {/* 5. الصلوات الخمس + الوتر وقيام الليل وموعد الصلاة القادمة */}
+            <HomePrayersCard
+              prayersCompleted={progress.prayersCompletedToday}
+              onTogglePrayer={handleTogglePrayer}
+              onOpenPrayers={() => setActiveTab('prayer')}
+            />
 
-              {/* Quick Adhkar / Charity Link */}
-              <div
-                id="home-charity-card"
-                onClick={() => setActiveTab('charity')}
-                className="bg-white rounded-3xl p-4.5 sm:p-5 border border-[#E8E2D5] shadow-xs flex items-center justify-between cursor-pointer hover:border-[#2D6A4F]/40 hover:shadow-sm transition-all group"
-              >
-                <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-[#A25A19]/10 text-[#A25A19] flex items-center justify-center shrink-0 text-2xl group-hover:scale-105 transition-transform">
-                    🌱
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <h3 className="text-base font-bold text-[#1F2421]">باب الخير 🤝</h3>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#FAF0E6] text-[#A25A19] font-semibold border border-[#E8D4BE]">
-                        صدقة اليوم
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#736B63] leading-relaxed">
-                      مقترحات صدقة يومية يسيرة لتزكية المال والنفس.
-                    </p>
-                  </div>
-                </div>
-                <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-[#FAF7F2] text-[#2D6A4F] border border-[#E8E2D5] group-hover:translate-x-[-2px] transition-transform">
-                  <ChevronLeft className="w-4 h-4" />
-                </div>
-              </div>
-            </div>
+            {/* 6. Grid of Cards: 📿 التسبيح, 📝 مهامي اليومية, ☀️ الأذكار, 🌙 المناسبات الإسلامية, 🤍 التبرع, 📖 القرآن */}
+            <HomeDashboardGrid
+              cards={[
+                {
+                  id: 'tasbeeh',
+                  icon: '📿',
+                  title: 'التسبيح',
+                  description: 'السبحة الإلكترونية الذكية مع الأوراد والاهتزاز وحفظ العداد.',
+                  badge: `${progress.totalTasbeehCount} تسبيحة اليوم`,
+                  onClick: () => setIsTasbeehOpen(true),
+                },
+                {
+                  id: 'tasks',
+                  icon: '📝',
+                  title: 'مهامي اليومية',
+                  description: 'جدول مهامك وطاعاتك اليومية الخاصة مع متابعة الإنجاز.',
+                  badge: `${todayTasks.filter((t) => t.isCompleted).length}/${todayTasks.length} منجز`,
+                  onClick: () => setIsTasksModalOpen(true),
+                },
+                {
+                  id: 'adhkar',
+                  icon: '☀️',
+                  title: 'الأذكار',
+                  description: 'أذكار الصباح والمساء، أذكار بعد الصلاة، وأذكار النوم المأثورة.',
+                  badge: 'أذكار اليوم والليلة',
+                  onClick: () => setActiveTab('adhkar'),
+                },
+                {
+                  id: 'occasions',
+                  icon: '🌙',
+                  title: 'المناسبات الإسلامية',
+                  description: 'عدّ تنازلي للمواسم المباركة والأيام الفاضلة ومواعيد الخير.',
+                  badge: 'مواسم الخير',
+                  onClick: () => setIsOccasionsModalOpen(true),
+                },
+                {
+                  id: 'charity',
+                  icon: '🤍',
+                  title: 'التبرع',
+                  description: 'أبواب الخير والمساهمة في الصدقات عبر المنصات الرسمية المعتمدة.',
+                  badge: 'باب الصدقة',
+                  onClick: () => setActiveTab('charity'),
+                },
+                {
+                  id: 'quran',
+                  icon: '📖',
+                  title: 'القرآن',
+                  description: 'المصحف الشريف وتتبع الورد اليومي مع تلاوة بصوت كبار القراء.',
+                  badge: `${progress.quranPagesReadToday} صفحات اليوم`,
+                  onClick: () => setActiveTab('quran'),
+                },
+              ]}
+            />
 
-            {/* Real Android Push Notification Banner Card */}
-            <div
-              id="home-push-banner"
-              onClick={() => setIsPushModalOpen(true)}
-              className="bg-gradient-to-r from-[#2D6A4F]/10 via-[#FAF7F2] to-[#2D6A4F]/5 rounded-3xl p-4 sm:p-5 border border-[#2D6A4F]/25 shadow-xs flex items-center justify-between cursor-pointer hover:border-[#2D6A4F]/50 hover:shadow-sm transition-all group"
-            >
-              <div className="flex items-center gap-3.5">
-                <div className="w-11 h-11 rounded-2xl bg-[#2D6A4F] text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform text-xl">
-                  🔔
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <h3 className="text-sm sm:text-base font-bold text-[#1F2421]">إشعارات الهاتف والأذان 📲</h3>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#2D6A4F] text-white font-bold">
-                      Android Push
-                    </span>
-                  </div>
-                  <p className="text-xs text-[#554E46] leading-relaxed">
-                    إشعارات حقيقية مع اهتزاز تظهر على شاشة هاتفك حتى عند إغلاق الموقع أو قفل الشاشة.
-                  </p>
-                </div>
-              </div>
-              <div className="shrink-0 hidden sm:flex items-center justify-center px-3 py-1.5 rounded-xl bg-white text-[#2D6A4F] border border-[#2D6A4F]/20 text-xs font-bold group-hover:bg-[#2D6A4F] group-hover:text-white transition-colors">
-                <span>إعداد التنبيهات</span>
-              </div>
-            </div>
+            {/* 4. Small elegant Nearest Occasion Card */}
+            <HomeNearestOccasionCard onOpenOccasions={() => setIsOccasionsModalOpen(true)} />
 
-            {/* المناسبات القادمة 🌙 Section */}
-            <UpcomingOccasionsSection />
-
-            {/* مهام اليوم Compact Card on Home */}
-            <div id="home-daily-tasks-section">
-              <DailyTasksCard
-                tasks={todayTasks}
-                onAddTaskClick={() => setIsCreateTaskOpen(true)}
-                onToggleTask={handleToggleTask}
-                onEditTaskClick={(task) => setEditingTask(task)}
-                onDeleteTask={handleDeleteTask}
-                isCompact={true}
-                selectedDate={selectedTaskDate}
-                onSelectDate={handleSelectTaskDate}
-                availableDates={availableTaskDates}
-              />
-            </div>
-
-            {/* Daily Timeline snippet on Home Page */}
-            <div className="pt-2">
-              <DailyTimeline
-                progress={progress}
-                onUpdateActivityStatus={handleUpdateActivityStatus}
-                onStartActivity={handleStartActivity}
-                onQuickAddQuranPage={handleQuickAddQuranPage}
-                tasks={todayTasks}
-                onAddTaskClick={() => setIsCreateTaskOpen(true)}
-                onToggleTask={handleToggleTask}
-                onEditTaskClick={(task) => setEditingTask(task)}
-                onDeleteTask={handleDeleteTask}
-                selectedDate={selectedTaskDate}
-                onSelectDate={handleSelectTaskDate}
-                availableDates={availableTaskDates}
-              />
-            </div>
+            {/* 5. Footer: "واجعل يومك مليئًا بذكر الله 🤍" */}
+            <footer className="pt-4 pb-2 text-center">
+              <p className="text-xs sm:text-sm font-medium text-[#8C827A] flex items-center justify-center gap-1.5">
+                <span>واجعل يومك مليئًا بذكر الله 🤍</span>
+              </p>
+            </footer>
           </div>
         )}
 
@@ -580,13 +574,6 @@ export default function App() {
         )}
       </main>
 
-      {/* Push Notification Manager Modal */}
-      <PushNotificationModal
-        isOpen={isPushModalOpen}
-        onClose={() => setIsPushModalOpen(false)}
-        coordinates={progress.prayerSettings?.coordinates}
-      />
-
       {/* Modals */}
       {activeAdhkarCat && (
         <AdhkarViewerModal
@@ -629,6 +616,26 @@ export default function App() {
         isOpen={Boolean(editingTask)}
         onClose={() => setEditingTask(null)}
         onSave={handleEditTask}
+      />
+
+      {/* Daily Tasks Modal */}
+      <DailyTasksModal
+        isOpen={isTasksModalOpen}
+        onClose={() => setIsTasksModalOpen(false)}
+        tasks={todayTasks}
+        onAddTaskClick={() => setIsCreateTaskOpen(true)}
+        onToggleTask={handleToggleTask}
+        onEditTaskClick={(task) => setEditingTask(task)}
+        onDeleteTask={handleDeleteTask}
+        selectedDate={selectedTaskDate}
+        onSelectDate={handleSelectTaskDate}
+        availableDates={availableTaskDates}
+      />
+
+      {/* Islamic Occasions Modal */}
+      <OccasionsModal
+        isOpen={isOccasionsModalOpen}
+        onClose={() => setIsOccasionsModalOpen(false)}
       />
 
       {/* Floating Quran Audio Player Bar (Sheikh Recitation) */}

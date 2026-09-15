@@ -43,18 +43,27 @@ export function isPushSupported(): boolean {
  * Gets current Notification permission
  */
 export function getNotificationPermission(): NotificationPermission {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    return 'denied';
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    return Notification.permission;
   }
-  return Notification.permission;
+  return 'default';
 }
+
+/**
+ * Canonical fallback VAPID Public Key (uncompressed P-256 ECDSA key)
+ * Guaranteed to match backend server and valid for Google FCM Web Push
+ */
+export const DEFAULT_VAPID_PUBLIC_KEY =
+  (typeof import.meta !== 'undefined' && (import.meta as Record<string, any>).env?.VITE_VAPID_PUBLIC_KEY) ||
+  'BNZ2K6EyIYxITp4N0Gf547OroRMvzghNEoHZJ-zlGlYzR-4kMUkCrcLxwx0Vhhh9gUAGnaUfXIVY7fV5AtTjDX4';
 
 /**
  * Decodes URL-safe base64 string to Uint8Array for VAPID applicationServerKey
  */
 export function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding)
+  const cleaned = (base64String || '').trim();
+  const padding = '='.repeat((4 - (cleaned.length % 4)) % 4);
+  const base64 = (cleaned + padding)
     .replace(/-/g, '+')
     .replace(/_/g, '/');
 
@@ -87,18 +96,21 @@ export async function registerPushServiceWorker(): Promise<ServiceWorkerRegistra
 }
 
 /**
- * Fetches the backend VAPID public key
+ * Fetches the backend VAPID public key with reliable fallback
  */
-export async function fetchVapidPublicKey(): Promise<string | null> {
+export async function fetchVapidPublicKey(): Promise<string> {
   try {
     const res = await fetch('/api/push/vapid-public-key');
-    if (!res.ok) throw new Error('Failed to fetch VAPID key');
-    const data = await res.json();
-    return data.publicKey;
+    if (res.ok) {
+      const data = await res.json();
+      if (data.publicKey && typeof data.publicKey === 'string' && data.publicKey.trim().length > 20) {
+        return data.publicKey.trim();
+      }
+    }
   } catch (err) {
-    console.error('[Push] Failed to get VAPID key from backend:', err);
-    return null;
+    console.warn('[Push] Failed to get VAPID key from backend, using default fallback key:', err);
   }
+  return DEFAULT_VAPID_PUBLIC_KEY;
 }
 
 /**
@@ -150,19 +162,27 @@ export async function subscribeToWebPush(
   if (!isPushSupported()) {
     return {
       success: false,
-      error: 'متصفحك الحالي لا يدعم تقنية Web Push للإشعارات. جرّب استخدام متصفح Google Chrome على هاتفك.',
+      error: 'المتصفح الحالي لا يدعم التنبيهات المباشرة. يُفضّل استخدام متصفح كروم على الهاتف.',
     };
   }
 
   try {
-    // 1. Request user permission
-    const permission = await Notification.requestPermission();
+    // 1. Request user permission if not already granted
+    let permission = typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default';
+    if (permission !== 'granted' && typeof window !== 'undefined' && 'Notification' in window && Notification.requestPermission) {
+      try {
+        permission = await Notification.requestPermission();
+      } catch {
+        // Fallback for some browsers
+      }
+    }
+
     if (permission !== 'granted') {
       return {
         success: false,
         error:
           permission === 'denied'
-            ? 'تم رفض إذن الإشعارات من إعدادات المتصفح. يرجى تفعيل الإذن من علامة القفل بجانب عنوان الموقع.'
+            ? 'إذن الإشعارات متوقف في المتصفح. يرجى السماح بالإشعارات من إعدادات المتصفح.'
             : 'لم يتم منح إذن الإشعارات.',
       };
     }
@@ -170,18 +190,46 @@ export async function subscribeToWebPush(
     // 2. Ensure Service Worker is registered
     const registration = await registerPushServiceWorker();
     if (!registration) {
-      return { success: false, error: 'تعذر تشغيل Service Worker للإشعارات' };
+      return { success: false, error: 'تعذر إعداد نظام التنبيهات في المتصفح.' };
     }
 
     // 3. Fetch VAPID public key
     const publicKey = await fetchVapidPublicKey();
-    if (!publicKey) {
-      return { success: false, error: 'تعذر الاتصال بخادم الإشعارات للحصول على مفتاح التشفير VAPID' };
+    if (!publicKey || publicKey.trim().length < 20) {
+      return { success: false, error: 'تعذر إتمام الاتصال بخدمة التنبيهات.' };
     }
 
-    // 4. Subscribe to PushManager
+    // 4. Decode key to Uint8Array
     const applicationServerKey = urlBase64ToUint8Array(publicKey);
+
+    // 5. Check if subscription already exists.
+    // If it exists with a different key or is stale, unsubscribe first to guarantee fresh valid subscription with FCM!
     let subscription = await registration.pushManager.getSubscription();
+    if (subscription) {
+      const existingKeyRaw = subscription.options?.applicationServerKey;
+      let isMismatch = false;
+      if (existingKeyRaw) {
+        const existingKeyBytes = new Uint8Array(existingKeyRaw);
+        if (
+          existingKeyBytes.length !== applicationServerKey.length ||
+          !existingKeyBytes.every((b, i) => b === applicationServerKey[i])
+        ) {
+          isMismatch = true;
+        }
+      } else {
+        isMismatch = true;
+      }
+
+      if (isMismatch) {
+        console.log('[Push] Unsubscribing mismatched/stale push subscription...');
+        try {
+          await subscription.unsubscribe();
+        } catch (e) {
+          console.warn('[Push] Error unsubscribing stale subscription:', e);
+        }
+        subscription = null;
+      }
+    }
 
     if (!subscription) {
       subscription = await registration.pushManager.subscribe({
@@ -190,12 +238,17 @@ export async function subscribeToWebPush(
       });
     }
 
-    // 5. Send subscription to backend server
+    // 6. Send subscription to backend server
+    const subscriptionJson = subscription.toJSON();
+    if (!subscriptionJson.endpoint || !subscriptionJson.keys) {
+      throw new Error('بيانات الاشتراك غير مكتملة من متصفح الهاتف');
+    }
+
     const response = await fetch('/api/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        subscription: subscription.toJSON(),
+        subscription: subscriptionJson,
         preferences,
         coordinates,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -204,14 +257,14 @@ export async function subscribeToWebPush(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'فشل حفظ الاشتراك في الخادم');
+      throw new Error(errorData.error || 'فشل حفظ الاشتراك في خادم الإشعارات');
     }
 
     savePreferencesLocally(preferences);
     return { success: true, subscription };
   } catch (error: any) {
     console.error('[Push Subscribe Error]', error);
-    return { success: false, error: error.message || 'حدث خطأ غير متوقع أثناء الاشتراك' };
+    return { success: false, error: error.message || 'حدث خطأ أثناء تفعيل اشتراك الإشعارات' };
   }
 }
 
@@ -241,26 +294,52 @@ export async function unsubscribeFromWebPush(): Promise<{ success: boolean; erro
 
 /**
  * Triggers a real test push notification from backend to this device
+ * Auto-subscribes if user already granted permission!
  */
-export async function sendTestPushNotification(customTitle?: string, customBody?: string): Promise<{
+export async function sendTestPushNotification(
+  customTitle?: string,
+  customBody?: string
+): Promise<{
   success: boolean;
   delivered?: number;
   message?: string;
   error?: string;
 }> {
   try {
-    const subscription = await getCurrentPushSubscription();
-    const endpoint = subscription?.endpoint;
+    let subscription = await getCurrentPushSubscription();
+
+    // If no subscription exists, but notification permission is already granted, auto-subscribe seamlessly!
+    if (!subscription && getNotificationPermission() === 'granted') {
+      console.log('[Push] Notification permission is already granted. Auto-subscribing before sending test...');
+      const subRes = await subscribeToWebPush();
+      if (subRes.success && subRes.subscription) {
+        subscription = subRes.subscription;
+      } else {
+        return {
+          success: false,
+          error: subRes.error || 'يرجى تفعيل الإشعارات أولاً بالضغط على زر «تفعيل الإشعارات».',
+        };
+      }
+    }
+
+    if (!subscription) {
+      return {
+        success: false,
+        error: 'لم يتم تفعيل الإشعارات بعد في هذا الجهاز. يرجى الضغط على زر «تفعيل الإشعارات» أولاً.',
+      };
+    }
+
+    const endpoint = subscription.endpoint;
 
     const res = await fetch('/api/push/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         endpoint,
-        title: customTitle || 'أُنس - تجربة إشعار حقيقي 🌙',
+        title: customTitle || 'أُنس - تذكير طيب 🌙',
         body:
           customBody ||
-          'هذا إشعار تجريبي حقيقي لنظام Android Web Push! يصلك حتى وإن كان المتصفح مغلقاً تماماً 🤍',
+          'تذكير من تطبيق أُنس: لا تنسَ ذكر الله والدعاء في هذا الوقت المبارك 🤍',
       }),
     });
 

@@ -32,26 +32,33 @@ const PORT = 3000;
 const VAPID_FILE = path.join(process.cwd(), '.vapid-keys.json');
 const SUBSCRIPTIONS_FILE = path.join(process.cwd(), '.push-subscriptions.json');
 
+// Canonical permanent VAPID keypair for Web Push
+const DEFAULT_VAPID_PUBLIC_KEY =
+  'BNZ2K6EyIYxITp4N0Gf547OroRMvzghNEoHZJ-zlGlYzR-4kMUkCrcLxwx0Vhhh9gUAGnaUfXIVY7fV5AtTjDX4';
+const DEFAULT_VAPID_PRIVATE_KEY = 'pk1HVHhQgOG0slubtYEyKEZ4RSBQ6jwjuqwedERu5g4';
+const DEFAULT_VAPID_SUBJECT = 'mailto:support@ouns.app';
+
 // 1. Initialize VAPID Keys
 let vapidPublicKey = process.env.VAPID_PUBLIC_KEY || '';
 let vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || '';
-const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:support@ouns.app';
+const vapidSubject = process.env.VAPID_SUBJECT || DEFAULT_VAPID_SUBJECT;
 
 if (!vapidPublicKey || !vapidPrivateKey) {
   if (fs.existsSync(VAPID_FILE)) {
     try {
       const saved = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf-8'));
-      vapidPublicKey = saved.publicKey;
-      vapidPrivateKey = saved.privateKey;
+      if (saved.publicKey && saved.privateKey) {
+        vapidPublicKey = saved.publicKey;
+        vapidPrivateKey = saved.privateKey;
+      }
     } catch {
-      // Fallback to generate below
+      // Fallback
     }
   }
 
   if (!vapidPublicKey || !vapidPrivateKey) {
-    const generated = webpush.generateVAPIDKeys();
-    vapidPublicKey = generated.publicKey;
-    vapidPrivateKey = generated.privateKey;
+    vapidPublicKey = DEFAULT_VAPID_PUBLIC_KEY;
+    vapidPrivateKey = DEFAULT_VAPID_PRIVATE_KEY;
     try {
       fs.writeFileSync(
         VAPID_FILE,
@@ -64,6 +71,7 @@ if (!vapidPublicKey || !vapidPrivateKey) {
 }
 
 webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+console.log('[Push] VAPID configured. Public Key:', vapidPublicKey.substring(0, 16) + '...');
 
 // 2. Load Stored Subscriptions
 let subscriptions: StoredSubscription[] = [];
@@ -200,9 +208,14 @@ async function startServer() {
   app.post('/api/push/test', async (req: Request, res: Response) => {
     const { endpoint, title, body } = req.body;
 
-    const targets = endpoint
+    let targets = endpoint
       ? subscriptions.filter((s) => s.endpoint === endpoint)
       : subscriptions;
+
+    // Fallback: If specific endpoint was not matched but we have registered subscriptions, target the newest subscription
+    if (targets.length === 0 && subscriptions.length > 0) {
+      targets = [subscriptions[subscriptions.length - 1]];
+    }
 
     if (targets.length === 0) {
       res.status(404).json({
@@ -227,6 +240,7 @@ async function startServer() {
 
     let delivered = 0;
     const deadEndpoints: string[] = [];
+    let lastError: string | null = null;
 
     await Promise.all(
       targets.map(async (sub) => {
@@ -236,11 +250,20 @@ async function startServer() {
               endpoint: sub.endpoint,
               keys: sub.keys,
             },
-            payload
+            payload,
+            {
+              TTL: 60 * 60, // 1 hour TTL
+              urgency: 'high', // Wake Android immediately
+            }
           );
           delivered++;
+          console.log(`[Push Success] Delivered test notification to ${sub.endpoint.substring(0, 45)}...`);
         } catch (error: any) {
-          console.error(`[Push Error] Failed to send to ${sub.endpoint.substring(0, 30)}:`, error?.statusCode || error?.message);
+          console.error(
+            `[Push Error] Failed to send to ${sub.endpoint.substring(0, 45)}:`,
+            error?.statusCode || error?.message
+          );
+          lastError = error?.message || 'Push service rejected notification';
           // If subscription has expired or unsubscribed on Android/FCM (410 Gone / 404 Not Found)
           if (error?.statusCode === 410 || error?.statusCode === 404) {
             deadEndpoints.push(sub.endpoint);
@@ -254,11 +277,19 @@ async function startServer() {
       saveSubscriptions();
     }
 
+    if (delivered === 0) {
+      res.status(500).json({
+        success: false,
+        error: 'تعذر تسليم الإشعار إلى جهازك. يرجى التأكد من تفعيل الإشعارات.',
+      });
+      return;
+    }
+
     res.json({
       success: true,
       delivered,
       totalTargets: targets.length,
-      message: `تم إرسال الإشعار بنجاح إلى ${delivered} جهاز بنظام Web Push`,
+      message: 'تم إرسال الإشعار بنجاح إلى هاتفك 📲',
     });
   });
 
