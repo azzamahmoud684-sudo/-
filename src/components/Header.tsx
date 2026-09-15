@@ -6,7 +6,6 @@ interface HeaderProps {
   progress: UserProgress;
   onOpenReminders: () => void;
   onOpenProgress: () => void;
-  onOpenQibla?: () => void;
   onUpdateProfileName?: (name: string) => void;
   onResetToday?: () => void;
 }
@@ -15,7 +14,6 @@ export const Header: React.FC<HeaderProps> = ({
   progress,
   onOpenReminders,
   onOpenProgress,
-  onOpenQibla,
   onUpdateProfileName,
   onResetToday,
 }) => {
@@ -105,20 +103,6 @@ export const Header: React.FC<HeaderProps> = ({
                 {progress.userProfile?.name || 'حساب محلي'}
               </span>
             </button>
-
-            {/* Qibla Quick Button */}
-            {onOpenQibla && (
-              <button
-                id="header-qibla-btn"
-                onClick={onOpenQibla}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white hover:bg-[#F3EFE6] border border-[#E8E2D5] text-[#1F2421] text-xs font-semibold transition-colors cursor-pointer shadow-xs active:scale-95"
-                title="اتجاه القبلة 🕋"
-                aria-label="اتجاه القبلة"
-              >
-                <span className="text-sm">🕋</span>
-                <span className="hidden sm:inline text-xs">القبلة</span>
-              </button>
-            )}
 
             {/* Reminders Quick Bell */}
             <button

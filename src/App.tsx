@@ -17,7 +17,6 @@ import { DEFAULT_RECITER_ID } from './utils/quranAudio';
 import { DailyTasksCard } from './components/DailyTasksCard';
 import { CreateTaskModal } from './components/CreateTaskModal';
 import { EditTaskModal } from './components/EditTaskModal';
-import { QiblaModal } from './components/QiblaModal';
 import {
   loadUserProgress,
   saveUserProgress,
@@ -50,9 +49,6 @@ export default function App() {
   });
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<UserTask | null>(null);
-
-  // Qibla Modal state
-  const [isQiblaOpen, setIsQiblaOpen] = useState(false);
 
   // Modals state
   const [activeAdhkarCat, setActiveAdhkarCat] = useState<string | null>(null);
@@ -353,7 +349,6 @@ export default function App() {
         progress={progress}
         onOpenReminders={() => setActiveTab('reminders')}
         onOpenProgress={() => setActiveTab('progress')}
-        onOpenQibla={() => setIsQiblaOpen(true)}
         onUpdateProfileName={handleUpdateProfileName}
         onResetToday={handleResetToday}
       />
@@ -369,27 +364,27 @@ export default function App() {
               onNavigateToTab={(tab) => setActiveTab(tab)}
             />
 
-            {/* Home Quick Tools Grid: Qibla & Daily Aids */}
+            {/* Home Quick Tools Grid: Daily Aids */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Qibla Shortcut Card */}
+              {/* Quick Tasbeeh Shortcut Card */}
               <div
-                id="home-qibla-card"
-                onClick={() => setIsQiblaOpen(true)}
+                id="home-tasbeeh-card"
+                onClick={() => setIsTasbeehOpen(true)}
                 className="bg-white rounded-3xl p-4.5 sm:p-5 border border-[#E8E2D5] shadow-xs flex items-center justify-between cursor-pointer hover:border-[#2D6A4F]/40 hover:shadow-sm transition-all group"
               >
                 <div className="flex items-center gap-3.5">
                   <div className="w-12 h-12 rounded-2xl bg-[#2D6A4F]/10 text-[#2D6A4F] flex items-center justify-center shrink-0 text-2xl group-hover:scale-105 transition-transform">
-                    🕋
+                    📿
                   </div>
                   <div>
                     <div className="flex items-center gap-2 mb-0.5">
-                      <h3 className="text-base font-bold text-[#1F2421]">القبلة 🕋</h3>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#FAF0E6] text-[#A25A19] font-semibold border border-[#E8D4BE]">
-                        بوصلة مباشرة
+                      <h3 className="text-base font-bold text-[#1F2421]">السبحة الإلكترونية 📿</h3>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#E8F5E9] text-[#2D6A4F] font-semibold border border-[#A5D6A7]">
+                        تسبيح واستغفار
                       </span>
                     </div>
                     <p className="text-xs text-[#736B63] leading-relaxed">
-                      حدد اتجاه الكعبة المشرفة بدقة من موقعك الحالي.
+                      عداد أذكار ذكي مع حفظ الأوراد ومؤثرات اهتزاز.
                     </p>
                   </div>
                 </div>
@@ -411,7 +406,7 @@ export default function App() {
                   <div>
                     <div className="flex items-center gap-2 mb-0.5">
                       <h3 className="text-base font-bold text-[#1F2421]">باب الخير 🤝</h3>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#E8F5E9] text-[#2D6A4F] font-semibold border border-[#A5D6A7]">
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#FAF0E6] text-[#A25A19] font-semibold border border-[#E8D4BE]">
                         صدقة اليوم
                       </span>
                     </div>
@@ -478,7 +473,6 @@ export default function App() {
                 prayersCompletedToday: prayers,
               }));
             }}
-            onOpenQibla={() => setIsQiblaOpen(true)}
             onOpenAdhkarAfterPrayer={() => setActiveAdhkarCat('after_prayer')}
           />
         )}
@@ -563,12 +557,6 @@ export default function App() {
         isOpen={Boolean(editingTask)}
         onClose={() => setEditingTask(null)}
         onSave={handleEditTask}
-      />
-
-      {/* Qibla Direction Modal */}
-      <QiblaModal
-        isOpen={isQiblaOpen}
-        onClose={() => setIsQiblaOpen(false)}
       />
 
       {/* Floating Quran Audio Player Bar (Sheikh Recitation) */}

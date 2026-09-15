@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Clock,
   MapPin,
-  Compass,
   Volume2,
   VolumeX,
   Play,
@@ -46,14 +45,12 @@ import { UserProgress } from '../types';
 interface PrayerSectionProps {
   progress: UserProgress;
   onUpdatePrayersCompleted: (prayers: string[]) => void;
-  onOpenQibla: () => void;
   onOpenAdhkarAfterPrayer: () => void;
 }
 
 export const PrayerSection: React.FC<PrayerSectionProps> = ({
   progress,
   onUpdatePrayersCompleted,
-  onOpenQibla,
   onOpenAdhkarAfterPrayer,
 }) => {
   // Location config
@@ -381,7 +378,7 @@ export const PrayerSection: React.FC<PrayerSectionProps> = ({
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-[#D4A373]/10 rounded-full blur-2xl pointer-events-none -ml-10 -mb-10" />
 
         <div className="relative z-10">
-          {/* Top meta: Location & Qibla shortcut */}
+          {/* Top meta: Location selector */}
           <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-white/15">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center text-[#D4A373]">
@@ -395,18 +392,6 @@ export const PrayerSection: React.FC<PrayerSectionProps> = ({
                 <span>{location.name}</span>
                 {location.country && <span className="text-white/70">، {location.country}</span>}
                 <ChevronDown className="w-3.5 h-3.5 opacity-80" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Qibla compass shortcut button */}
-              <button
-                id="btn-prayer-to-qibla"
-                onClick={onOpenQibla}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition-all backdrop-blur-xs cursor-pointer active:scale-95"
-              >
-                <Compass className="w-4 h-4 text-[#D4A373]" />
-                <span>اتجاه القبلة 🕋</span>
               </button>
             </div>
           </div>
