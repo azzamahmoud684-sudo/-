@@ -17,6 +17,7 @@ import { DEFAULT_RECITER_ID } from './utils/quranAudio';
 import { DailyTasksCard } from './components/DailyTasksCard';
 import { CreateTaskModal } from './components/CreateTaskModal';
 import { EditTaskModal } from './components/EditTaskModal';
+import { UpcomingOccasionsSection } from './components/UpcomingOccasionsSection';
 import {
   loadUserProgress,
   saveUserProgress,
@@ -28,6 +29,8 @@ import {
   updateUserTaskText,
   toggleUserTaskCompleted,
   deleteUserTask,
+  getTodayDateString,
+  getUserTaskDates,
 } from './utils/storage';
 import { UserProgress, ActivityStatus, ReminderSetting, UserTask } from './types';
 import { ChevronLeft, Compass } from 'lucide-react';
@@ -42,10 +45,15 @@ export default function App() {
   const [isSurahAudioPlaying, setIsSurahAudioPlaying] = useState(false);
   const [selectedReciterId, setSelectedReciterId] = useState<string>(DEFAULT_RECITER_ID);
 
-  // Personal Daily Tasks state (strictly isolated per user ID)
+  // Personal Daily Tasks state (strictly isolated per user ID & date)
+  const [selectedTaskDate, setSelectedTaskDate] = useState<string>(() => getTodayDateString());
   const [todayTasks, setTodayTasks] = useState<UserTask[]>(() => {
     const initialProgress = loadUserProgress();
-    return loadUserTasksForDate(initialProgress.userProfile?.id || 'usr_local');
+    return loadUserTasksForDate(initialProgress.userProfile?.id || 'usr_local', getTodayDateString());
+  });
+  const [availableTaskDates, setAvailableTaskDates] = useState<string[]>(() => {
+    const initialProgress = loadUserProgress();
+    return getUserTaskDates(initialProgress.userProfile?.id || 'usr_local');
   });
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<UserTask | null>(null);
@@ -55,40 +63,48 @@ export default function App() {
   const [isTasbeehOpen, setIsTasbeehOpen] = useState(false);
   const [isQuranOpen, setIsQuranOpen] = useState(false);
 
+  // Refresh tasks helper
+  const refreshTasks = (date: string = selectedTaskDate) => {
+    const userId = progress.userProfile?.id || 'usr_local';
+    setTodayTasks(loadUserTasksForDate(userId, date));
+    setAvailableTaskDates(getUserTaskDates(userId));
+  };
+
   // Refresh tasks when user profile changes
   useEffect(() => {
     if (progress.userProfile?.id) {
-      setTodayTasks(loadUserTasksForDate(progress.userProfile.id));
+      refreshTasks(selectedTaskDate);
     }
   }, [progress.userProfile?.id]);
 
   // Tasks handlers
+  const handleSelectTaskDate = (date: string) => {
+    setSelectedTaskDate(date);
+    refreshTasks(date);
+  };
+
   const handleAddTask = (text: string) => {
     const userId = progress.userProfile?.id || 'usr_local';
-    const { newTask } = createUserTask(userId, text);
-    setTodayTasks((prev) => [newTask, ...prev]);
+    createUserTask(userId, text, selectedTaskDate);
+    refreshTasks(selectedTaskDate);
   };
 
   const handleToggleTask = (taskId: string) => {
     const userId = progress.userProfile?.id || 'usr_local';
     toggleUserTaskCompleted(userId, taskId);
-    setTodayTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, completed: !t.completed } : t))
-    );
+    refreshTasks(selectedTaskDate);
   };
 
   const handleEditTask = (taskId: string, newText: string) => {
     const userId = progress.userProfile?.id || 'usr_local';
     updateUserTaskText(userId, taskId, newText);
-    setTodayTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, text: newText } : t))
-    );
+    refreshTasks(selectedTaskDate);
   };
 
   const handleDeleteTask = (taskId: string) => {
     const userId = progress.userProfile?.id || 'usr_local';
     deleteUserTask(userId, taskId);
-    setTodayTasks((prev) => prev.filter((t) => t.id !== taskId));
+    refreshTasks(selectedTaskDate);
   };
 
   // Sync progress to localStorage
@@ -421,6 +437,9 @@ export default function App() {
               </div>
             </div>
 
+            {/* المناسبات القادمة 🌙 Section */}
+            <UpcomingOccasionsSection />
+
             {/* مهام اليوم Compact Card on Home */}
             <div id="home-daily-tasks-section">
               <DailyTasksCard
@@ -430,6 +449,9 @@ export default function App() {
                 onEditTaskClick={(task) => setEditingTask(task)}
                 onDeleteTask={handleDeleteTask}
                 isCompact={true}
+                selectedDate={selectedTaskDate}
+                onSelectDate={handleSelectTaskDate}
+                availableDates={availableTaskDates}
               />
             </div>
 
@@ -445,6 +467,9 @@ export default function App() {
                 onToggleTask={handleToggleTask}
                 onEditTaskClick={(task) => setEditingTask(task)}
                 onDeleteTask={handleDeleteTask}
+                selectedDate={selectedTaskDate}
+                onSelectDate={handleSelectTaskDate}
+                availableDates={availableTaskDates}
               />
             </div>
           </div>
@@ -461,6 +486,9 @@ export default function App() {
             onToggleTask={handleToggleTask}
             onEditTaskClick={(task) => setEditingTask(task)}
             onDeleteTask={handleDeleteTask}
+            selectedDate={selectedTaskDate}
+            onSelectDate={handleSelectTaskDate}
+            availableDates={availableTaskDates}
           />
         )}
 

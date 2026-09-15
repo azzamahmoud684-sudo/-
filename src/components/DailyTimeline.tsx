@@ -34,6 +34,9 @@ interface DailyTimelineProps {
   onToggleTask?: (taskId: string) => void;
   onEditTaskClick?: (task: UserTask) => void;
   onDeleteTask?: (taskId: string) => void;
+  selectedDate?: string;
+  onSelectDate?: (date: string) => void;
+  availableDates?: string[];
 }
 
 export const DailyTimeline: React.FC<DailyTimelineProps> = ({
@@ -46,6 +49,9 @@ export const DailyTimeline: React.FC<DailyTimelineProps> = ({
   onToggleTask,
   onEditTaskClick,
   onDeleteTask,
+  selectedDate,
+  onSelectDate,
+  availableDates,
 }) => {
   const currentSystemPeriod = getCurrentTimePeriod();
   const [selectedPeriodFilter, setSelectedPeriodFilter] = useState<TimePeriod | 'all'>('all');
@@ -417,6 +423,9 @@ export const DailyTimeline: React.FC<DailyTimelineProps> = ({
             onEditTaskClick={onEditTaskClick}
             onDeleteTask={onDeleteTask}
             isCompact={false}
+            selectedDate={selectedDate}
+            onSelectDate={onSelectDate}
+            availableDates={availableDates}
           />
         </div>
       )}

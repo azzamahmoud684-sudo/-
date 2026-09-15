@@ -72,6 +72,33 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
             />
           </div>
 
+          {/* Quick Suggestions based on user examples */}
+          <div>
+            <p className="text-[11px] font-medium text-[#857B72] mb-1.5">أو اختر من المقترحات السريعة:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                'قراءة 10 صفحات من القرآن',
+                'أذكار الصباح',
+                'صدقة',
+                'حفظ سورة قصيرة',
+                'مساعدة شخص',
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => setTaskText(suggestion)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-all cursor-pointer select-none ${
+                    taskText === suggestion
+                      ? 'bg-[#2D6A4F] text-white border-[#2D6A4F]'
+                      : 'bg-[#FAF7F2] hover:bg-[#F3EFE6] text-[#6A635B] border-[#E8E2D5]'
+                  }`}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex items-center justify-end gap-2.5 pt-2">
             <button
               type="button"

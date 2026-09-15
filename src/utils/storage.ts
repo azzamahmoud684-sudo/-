@@ -267,6 +267,16 @@ export function loadUserTasksForDate(userId: string, dateStr: string = getTodayD
   return all.filter((t) => t.date === dateStr);
 }
 
+export function getUserTaskDates(userId: string): string[] {
+  const all = loadAllUserTasks(userId);
+  const datesSet = new Set<string>();
+  datesSet.add(getTodayDateString());
+  all.forEach((t) => {
+    if (t.date) datesSet.add(t.date);
+  });
+  return Array.from(datesSet).sort().reverse();
+}
+
 export function createUserTask(
   userId: string,
   text: string,
