@@ -1,7 +1,7 @@
 {
   "name": "أُنس - رفيقك اليومي للعبادة",
   "description": "تطبيق أُنس الإسلامي: مواقيت الصلاة والأذان، إشعارات الهاتف وأندرويد الحقيقية (Web Push)، العد التنازلي للمناسبات الإسلامية، الاستماع لتلاوات القرآن، المصحف، الأذكار، مهام اليوم وباب الخير.",
-  "requestFramePermissions": ["geolocation", "microphone"],
+  "requestFramePermissions": ["geolocation"],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

@@ -22,7 +22,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Loader2,
-  Mic,
 } from 'lucide-react';
 import { ALL_SURAHS, SurahMeta } from '../data/quranData';
 import { getSurahVerses, LoadedSurahData } from '../utils/quranReader';
@@ -598,17 +597,6 @@ export const QuranSection: React.FC<QuranSectionProps> = ({
                         <span>صوت الشيخ 🎧</span>
                       </>
                     )}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setCurrentMushafPage(surah.startPage);
-                      setViewMode('mushafPage');
-                    }}
-                    className="p-1.5 rounded-xl bg-[#2D6A4F]/10 hover:bg-[#2D6A4F]/20 text-[#2D6A4F] transition-all cursor-pointer"
-                    title={`تسميع صوتي تفاعلي لسورة ${surah.name}`}
-                  >
-                    <Mic className="w-3.5 h-3.5" />
                   </button>
 
                   <button

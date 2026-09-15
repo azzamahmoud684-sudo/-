@@ -14,7 +14,6 @@ import {
   Volume2,
   Pause,
   Play,
-  Mic,
   Copy,
   Layers,
   ArrowRight,
@@ -31,7 +30,6 @@ import {
   getSurahByNumber,
 } from '../utils/quranReader';
 import { ALL_SURAHS, SurahMeta } from '../data/quranData';
-import { QuranVoiceReciter } from './QuranVoiceReciter';
 
 interface QuranPageReaderProps {
   initialPage?: number;
@@ -63,7 +61,6 @@ export const QuranPageReader: React.FC<QuranPageReaderProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [fontSize, setFontSize] = useState<number>(24);
   const [selectedAyah, setSelectedAyah] = useState<QuranAyah | null>(null);
-  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   // Jump by page or surah controls
@@ -262,29 +259,6 @@ export const QuranPageReader: React.FC<QuranPageReaderProps> = ({
 
   const isCurrentPageBookmarked = savedBookmarkPage === currentPage;
 
-  // Selected Ayah Index within Page for Voice Reciter Next/Prev
-  const currentAyahIndexOnPage = useMemo(() => {
-    if (!pageData || !selectedAyah) return -1;
-    return pageData.ayahs.findIndex((a) => a.number === selectedAyah.number);
-  }, [pageData, selectedAyah]);
-
-  const handleNextAyahInReciter = () => {
-    if (!pageData) return;
-    if (currentAyahIndexOnPage >= 0 && currentAyahIndexOnPage < pageData.ayahs.length - 1) {
-      setSelectedAyah(pageData.ayahs[currentAyahIndexOnPage + 1]);
-    } else if (currentPage < 604) {
-      // Flip to next page
-      setCurrentPage((p) => p + 1);
-    }
-  };
-
-  const handlePrevAyahInReciter = () => {
-    if (!pageData) return;
-    if (currentAyahIndexOnPage > 0) {
-      setSelectedAyah(pageData.ayahs[currentAyahIndexOnPage - 1]);
-    }
-  };
-
   return (
     <div className="w-full space-y-4 select-none">
       {/* ================= Feedback Toast ================= */}
@@ -368,25 +342,6 @@ export const QuranPageReader: React.FC<QuranPageReaderProps> = ({
               )}
             </button>
           )}
-
-          {/* Tarteel Voice Tester Trigger */}
-          <button
-            onClick={() => {
-              if (!selectedAyah && pageData && pageData.ayahs.length > 0) {
-                setSelectedAyah(pageData.ayahs[0]);
-              }
-              setIsVoiceModalOpen(true);
-            }}
-            className="px-3.5 py-1.5 rounded-xl bg-[#2D6A4F] text-white hover:bg-[#1E4535] text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-95"
-            title="ابدأ التسميع الصوتي المباشر واختبار التلاوة وتصحيحها عبر Web Speech API"
-          >
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-            </span>
-            <Mic className="w-3.5 h-3.5" />
-            <span>تسميع صوتي وتصحيح ذكي</span>
-          </button>
 
           {/* Bookmark page */}
           <button
@@ -611,7 +566,7 @@ export const QuranPageReader: React.FC<QuranPageReaderProps> = ({
                                 ? 'bg-[#EBF7EE] text-[#1E4535] underline decoration-[#2D6A4F] decoration-2 underline-offset-8'
                                 : 'hover:bg-[#FAF7F2] hover:text-[#2D6A4F]'
                             }`}
-                            title={`الآية ${ayah.numberInSurah} من ${ayah.surahName} (انقر للتسميع أو الاستماع)`}
+                            title={`الآية ${ayah.numberInSurah} من ${ayah.surahName} (انقر لتحديد الآية أو نسخها)`}
                           >
                             {ayah.cleanText}{' '}
                             {/* Ayah End Medallion */}
@@ -654,16 +609,6 @@ export const QuranPageReader: React.FC<QuranPageReaderProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Voice Reciter for this Ayah */}
-              <button
-                onClick={() => setIsVoiceModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-[#2D6A4F] text-white hover:bg-[#1E4535] font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-                title="تسميع وتصحيح هذه الآية بصوتك"
-              >
-                <Mic className="w-3.5 h-3.5" />
-                <span>تسميع هذه الآية</span>
-              </button>
-
               {/* Copy Ayah */}
               <button
                 onClick={() => handleCopyAyah(selectedAyah)}
@@ -719,42 +664,6 @@ export const QuranPageReader: React.FC<QuranPageReaderProps> = ({
           <ChevronLeft className="w-4 h-4" />
         </button>
       </div>
-
-      {/* Floating Microphone Action Button for Quick Recitation */}
-      <div className="fixed bottom-6 left-6 z-30">
-        <button
-          onClick={() => {
-            if (!selectedAyah && pageData && pageData.ayahs.length > 0) {
-              setSelectedAyah(pageData.ayahs[0]);
-            }
-            setIsVoiceModalOpen(true);
-          }}
-          className="flex items-center gap-2.5 px-4 py-3 bg-[#2D6A4F] hover:bg-[#1E4535] text-white rounded-full shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 active:scale-95 cursor-pointer border border-white/20"
-          title="ابدأ التسميع الصوتي المباشر للآية وتصحيحها فوراً"
-        >
-          <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
-            <Mic className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-xs font-bold pl-1 hidden sm:inline">تسميع صوتي وتصحيح ذكي</span>
-        </button>
-      </div>
-
-      {/* ================= Interactive Voice Recitation & Correction Modal (Tarteel-like) ================= */}
-      {selectedAyah && (
-        <QuranVoiceReciter
-          activeAyah={selectedAyah}
-          allAyahsOnPage={pageData?.ayahs}
-          isOpen={isVoiceModalOpen}
-          onClose={() => setIsVoiceModalOpen(false)}
-          onSelectAyah={(ayah) => setSelectedAyah(ayah)}
-          onNextAyah={handleNextAyahInReciter}
-          onPrevAyah={handlePrevAyahInReciter}
-          hasNextAyah={
-            currentAyahIndexOnPage < (pageData?.ayahs.length || 0) - 1 || currentPage < 604
-          }
-          hasPrevAyah={currentAyahIndexOnPage > 0 || currentPage > 1}
-        />
-      )}
     </div>
   );
 };
