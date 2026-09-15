@@ -18,6 +18,8 @@ import { DailyTasksCard } from './components/DailyTasksCard';
 import { CreateTaskModal } from './components/CreateTaskModal';
 import { EditTaskModal } from './components/EditTaskModal';
 import { UpcomingOccasionsSection } from './components/UpcomingOccasionsSection';
+import { PushNotificationModal } from './components/PushNotificationModal';
+import { registerPushServiceWorker } from './utils/pushManager';
 import {
   loadUserProgress,
   saveUserProgress,
@@ -62,6 +64,12 @@ export default function App() {
   const [activeAdhkarCat, setActiveAdhkarCat] = useState<string | null>(null);
   const [isTasbeehOpen, setIsTasbeehOpen] = useState(false);
   const [isQuranOpen, setIsQuranOpen] = useState(false);
+  const [isPushModalOpen, setIsPushModalOpen] = useState(false);
+
+  // Initialize Web Push Service Worker
+  useEffect(() => {
+    registerPushServiceWorker();
+  }, []);
 
   // Refresh tasks helper
   const refreshTasks = (date: string = selectedTaskDate) => {
@@ -365,6 +373,7 @@ export default function App() {
         progress={progress}
         onOpenReminders={() => setActiveTab('reminders')}
         onOpenProgress={() => setActiveTab('progress')}
+        onOpenPushModal={() => setIsPushModalOpen(true)}
         onUpdateProfileName={handleUpdateProfileName}
         onResetToday={handleResetToday}
       />
@@ -434,6 +443,33 @@ export default function App() {
                 <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-[#FAF7F2] text-[#2D6A4F] border border-[#E8E2D5] group-hover:translate-x-[-2px] transition-transform">
                   <ChevronLeft className="w-4 h-4" />
                 </div>
+              </div>
+            </div>
+
+            {/* Real Android Push Notification Banner Card */}
+            <div
+              id="home-push-banner"
+              onClick={() => setIsPushModalOpen(true)}
+              className="bg-gradient-to-r from-[#2D6A4F]/10 via-[#FAF7F2] to-[#2D6A4F]/5 rounded-3xl p-4 sm:p-5 border border-[#2D6A4F]/25 shadow-xs flex items-center justify-between cursor-pointer hover:border-[#2D6A4F]/50 hover:shadow-sm transition-all group"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-[#2D6A4F] text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform text-xl">
+                  🔔
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <h3 className="text-sm sm:text-base font-bold text-[#1F2421]">إشعارات الهاتف والأذان 📲</h3>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#2D6A4F] text-white font-bold">
+                      Android Push
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#554E46] leading-relaxed">
+                    إشعارات حقيقية مع اهتزاز تظهر على شاشة هاتفك حتى عند إغلاق الموقع أو قفل الشاشة.
+                  </p>
+                </div>
+              </div>
+              <div className="shrink-0 hidden sm:flex items-center justify-center px-3 py-1.5 rounded-xl bg-white text-[#2D6A4F] border border-[#2D6A4F]/20 text-xs font-bold group-hover:bg-[#2D6A4F] group-hover:text-white transition-colors">
+                <span>إعداد التنبيهات</span>
               </div>
             </div>
 
@@ -539,9 +575,17 @@ export default function App() {
           <RemindersView
             reminders={reminders}
             onUpdateReminders={handleUpdateReminders}
+            coordinates={progress.prayerSettings?.coordinates}
           />
         )}
       </main>
+
+      {/* Push Notification Manager Modal */}
+      <PushNotificationModal
+        isOpen={isPushModalOpen}
+        onClose={() => setIsPushModalOpen(false)}
+        coordinates={progress.prayerSettings?.coordinates}
+      />
 
       {/* Modals */}
       {activeAdhkarCat && (

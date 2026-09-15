@@ -6,6 +6,7 @@ interface HeaderProps {
   progress: UserProgress;
   onOpenReminders: () => void;
   onOpenProgress: () => void;
+  onOpenPushModal?: () => void;
   onUpdateProfileName?: (name: string) => void;
   onResetToday?: () => void;
 }
@@ -14,6 +15,7 @@ export const Header: React.FC<HeaderProps> = ({
   progress,
   onOpenReminders,
   onOpenProgress,
+  onOpenPushModal,
   onUpdateProfileName,
   onResetToday,
 }) => {
@@ -104,13 +106,13 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </button>
 
-            {/* Reminders Quick Bell */}
+            {/* Reminders & Android Push Quick Bell */}
             <button
               id="header-reminders-btn"
-              onClick={onOpenReminders}
+              onClick={onOpenPushModal || onOpenReminders}
               className="relative p-2 rounded-full bg-white hover:bg-[#F3EFE6] border border-[#E8E2D5] text-[#403B36] transition-colors cursor-pointer shadow-xs active:scale-95"
-              title="مركز التذكيرات"
-              aria-label="مركز التذكيرات"
+              title="إشعارات الهاتف والأذان (Android Web Push)"
+              aria-label="إشعارات الهاتف والأذان"
             >
               <Bell className="w-4 h-4 text-[#2D6A4F]" />
               <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#2D6A4F] animate-pulse" />

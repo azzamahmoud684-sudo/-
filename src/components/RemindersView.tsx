@@ -1,61 +1,78 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Clock, ShieldCheck, Check, AlertCircle, Sparkles, Volume2, Smartphone } from 'lucide-react';
+import {
+  Bell,
+  Clock,
+  ShieldCheck,
+  Check,
+  AlertCircle,
+  Sparkles,
+  Volume2,
+  Smartphone,
+  Send,
+  RefreshCw,
+} from 'lucide-react';
 import { ReminderSetting } from '../types';
+import {
+  isPushSupported,
+  getNotificationPermission,
+  subscribeToWebPush,
+  sendTestPushNotification,
+  getCurrentPushSubscription,
+} from '../utils/pushManager';
+import { PushNotificationModal } from './PushNotificationModal';
 
 interface RemindersViewProps {
   reminders: ReminderSetting[];
   onUpdateReminders: (updated: ReminderSetting[]) => void;
+  coordinates?: { lat: number; lng: number } | null;
 }
 
-export const RemindersView: React.FC<RemindersViewProps> = ({ reminders, onUpdateReminders }) => {
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>('default');
-  const [testNotificationSent, setTestNotificationSent] = useState(false);
-  const [inAppToastMessage, setInAppToastMessage] = useState<string | null>(null);
+export const RemindersView: React.FC<RemindersViewProps> = ({
+  reminders,
+  onUpdateReminders,
+  coordinates,
+}) => {
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | 'unsupported'
+  >('default');
+  const [isWebPushSubscribed, setIsWebPushSubscribed] = useState(false);
+  const [isPushModalOpen, setIsPushModalOpen] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotificationPermission(Notification.permission);
+  const checkStatus = async () => {
+    if (typeof window !== 'undefined' && isPushSupported()) {
+      setNotificationPermission(getNotificationPermission());
+      const sub = await getCurrentPushSubscription();
+      setIsWebPushSubscribed(Boolean(sub));
     } else {
       setNotificationPermission('unsupported');
     }
+  };
+
+  useEffect(() => {
+    checkStatus();
   }, []);
 
-  const handleRequestPermission = async () => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      try {
-        const permission = await Notification.requestPermission();
-        setNotificationPermission(permission);
-        if (permission === 'granted') {
-          showNotification('أُنس 🌿', 'تم تفعيل التنبيهات بنجاح. أهلاً بك في رفيقك اليومي للعبادة 🤍');
-        }
-      } catch (err) {
-        console.error('Error requesting notification permission:', err);
-      }
-    }
-  };
-
-  const showNotification = (title: string, body: string) => {
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        new Notification(title, {
-          body,
-          icon: '/favicon.ico',
-          badge: '/favicon.ico',
-          tag: 'ouns-reminder',
-        });
-      } catch (e) {
-        // Fallback for environments with strict notification constructors
-        triggerInAppToast(body);
-      }
+  const handleTogglePushSub = async () => {
+    if (isWebPushSubscribed) {
+      setIsPushModalOpen(true);
     } else {
-      triggerInAppToast(body);
+      const res = await subscribeToWebPush(undefined, coordinates ? { lat: coordinates.lat, lng: coordinates.lng } : undefined);
+      if (res.success) {
+        setIsWebPushSubscribed(true);
+        setNotificationPermission('granted');
+        triggerToast('تم تفعيل إشعارات الهاتف (Android Web Push) بنجاح! 📲');
+      } else {
+        setIsPushModalOpen(true);
+      }
     }
   };
 
-  const triggerInAppToast = (msg: string) => {
-    setInAppToastMessage(msg);
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
     setTimeout(() => {
-      setInAppToastMessage(null);
+      setToastMessage(null);
     }, 4500);
   };
 
@@ -79,72 +96,91 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ reminders, onUpdat
     onUpdateReminders(updated);
   };
 
-  const handleTestNotification = (r: ReminderSetting) => {
-    showNotification('تذكير من أُنس 🌿', r.message);
-    setTestNotificationSent(true);
-    setTimeout(() => setTestNotificationSent(false), 3000);
+  const handleTestNotification = async (r: ReminderSetting) => {
+    setIsSendingTest(r.id);
+    // Send real Web Push through backend to device
+    const res = await sendTestPushNotification(r.title, r.message);
+    setIsSendingTest(null);
+
+    if (res.success) {
+      triggerToast(`تم إرسال الإشعار التجريبي الحقيقي لهاتفك بنجاح: «${r.title}» 📲`);
+    } else {
+      triggerToast(res.error || 'تعذر إرسال الإشعار. تأكد من تفعيل إشعارات الهاتف.');
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* In-app Toast Banner */}
-      {inAppToastMessage && (
+      {/* Toast Banner */}
+      {toastMessage && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 max-w-md w-[92%] bg-[#1E4535] text-white p-4 rounded-2xl shadow-xl border border-[#74C69D]/30 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="p-2 rounded-xl bg-white/10 shrink-0">
             <Bell className="w-5 h-5 text-[#95D5B2]" />
           </div>
           <div>
-            <p className="text-xs font-bold text-[#95D5B2]">تنبيه أُنس الذكي</p>
-            <p className="text-sm font-medium mt-0.5">{inAppToastMessage}</p>
+            <p className="text-xs font-bold text-[#95D5B2]">تنبيه أُنس المباشر</p>
+            <p className="text-sm font-medium mt-0.5">{toastMessage}</p>
           </div>
         </div>
       )}
+
+      {/* Push Notification Manager Modal */}
+      <PushNotificationModal
+        isOpen={isPushModalOpen}
+        onClose={() => {
+          setIsPushModalOpen(false);
+          checkStatus();
+        }}
+        coordinates={coordinates}
+      />
 
       {/* Header Banner */}
       <div className="bg-white rounded-3xl p-6 border border-[#E8E2D5] shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-2xl font-bold font-['Tajawal'] text-[#1F2421]">التذكيرات 🔔</h2>
+              <h2 className="text-2xl font-bold font-['Tajawal'] text-[#1F2421]">
+                التذكيرات وإشعارات الهاتف 🔔
+              </h2>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#2D6A4F]/10 text-[#2D6A4F] font-bold">
-                مركز التنبيهات
+                نظام Web Push
               </span>
             </div>
             <p className="text-xs sm:text-sm text-[#736B63] leading-relaxed">
-              رسائل لطيفة وهادئة تُعينك على الذكر والطاعة دون تكلف أو إلحاح. اختر أوقاتك المفضلة لكل طاعة.
+              إشعارات حقيقية معتمدة على نظام <strong>Android Web Push</strong> تصل لشريط إشعارات هاتفك مع الاهتزاز حتى عند إغلاق الموقع أو قفل الشاشة.
             </p>
           </div>
 
-          {/* Permission Status */}
-          <div>
-            {notificationPermission === 'granted' ? (
-              <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-[#E8F5E9] text-[#2D6A4F] text-xs font-bold border border-[#C8E6C9]">
-                <ShieldCheck className="w-4 h-4" />
-                <span>إشعارات المتصفح مفعلة ✓</span>
-              </div>
-            ) : notificationPermission === 'unsupported' ? (
-              <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-[#FAF0E6] text-[#A25A19] text-xs font-medium border border-[#E8D4BE]">
-                <Smartphone className="w-4 h-4" />
-                <span>التنبيهات تعمل داخل التطبيق</span>
-              </div>
+          {/* Real Web Push Status & Button */}
+          <div className="flex flex-wrap items-center gap-2">
+            {isWebPushSubscribed ? (
+              <button
+                type="button"
+                onClick={() => setIsPushModalOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#E8F5E9] hover:bg-[#D8ECD9] text-[#2D6A4F] text-xs font-bold border border-[#C8E6C9] shadow-xs transition-all cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4 text-[#2D6A4F]" />
+                <span>إشعارات الهاتف مفعلة ✓ (إدارة)</span>
+              </button>
             ) : (
               <button
-                onClick={handleRequestPermission}
+                type="button"
+                onClick={handleTogglePushSub}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#2D6A4F] text-white hover:bg-[#1E4535] text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
               >
-                <Bell className="w-4 h-4" />
-                <span>تفعيل إشعارات المتصفح</span>
+                <Smartphone className="w-4 h-4" />
+                <span>تفعيل إشعارات الهاتف 📲</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Smart Respectful Tone Notice */}
+        {/* Info Callout */}
         <div className="mt-5 p-3.5 rounded-2xl bg-[#FAF7F2] border border-[#E8E2D5] flex items-start gap-2.5 text-xs text-[#554E46]">
           <Sparkles className="w-4 h-4 text-[#2D6A4F] shrink-0 mt-0.5" />
           <p className="leading-relaxed">
             <strong>تنبيهات أُنس الذكية: </strong>
-            تستخدم عبارات رقيقة ومريحة تبث السكينة ولا تسبب الشعور بالذنب، لمساعدتك على استدامة العبادة برحابة قلب.
+            تستخدم عبارات رقيقة ومريحة تبث السكينة في النفس ولا تسبب الشعور بالذنب، لمساعدتك على استدامة العبادة برحابة قلب.
           </p>
         </div>
       </div>
@@ -165,7 +201,9 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ reminders, onUpdat
               <div className="flex items-center gap-2.5">
                 <div
                   className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                    reminder.enabled ? 'bg-[#2D6A4F]/10 text-[#2D6A4F]' : 'bg-[#E8E2D5] text-[#8C827A]'
+                    reminder.enabled
+                      ? 'bg-[#2D6A4F]/10 text-[#2D6A4F]'
+                      : 'bg-[#E8E2D5] text-[#8C827A]'
                   }`}
                 >
                   <Bell className="w-4 h-4" />
@@ -199,7 +237,10 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ reminders, onUpdat
             {/* Time Picker (for non-prayer times) */}
             {!reminder.isPrayerTime && (
               <div className="mb-3 pt-2 border-t border-[#F0ECE1] flex items-center justify-between text-xs">
-                <label htmlFor={`time-${reminder.id}`} className="text-[#857B72] font-medium flex items-center gap-1">
+                <label
+                  htmlFor={`time-${reminder.id}`}
+                  className="text-[#857B72] font-medium flex items-center gap-1"
+                >
                   <Clock className="w-3.5 h-3.5 text-[#2D6A4F]" />
                   <span>وقت التذكير المفضل:</span>
                 </label>
@@ -216,7 +257,9 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ reminders, onUpdat
 
             {/* Smart Message Preview */}
             <div className="p-3 rounded-2xl bg-[#FAF7F2] border border-[#E8E2D5] text-xs text-[#554E46] mb-3">
-              <span className="text-[11px] font-semibold text-[#8C827A] block mb-0.5">نص التذكير:</span>
+              <span className="text-[11px] font-semibold text-[#8C827A] block mb-0.5">
+                نص التذكير:
+              </span>
               <p className="italic text-[#1E4535] font-medium leading-relaxed">
                 «{reminder.message}»
               </p>
@@ -225,11 +268,22 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ reminders, onUpdat
             {/* Test Notification Button */}
             <div className="flex justify-end">
               <button
+                type="button"
                 onClick={() => handleTestNotification(reminder)}
-                className="flex items-center gap-1.5 text-xs text-[#2D6A4F] hover:text-[#1E4535] font-bold p-1 rounded-md hover:bg-[#F3EFE6] transition-colors cursor-pointer"
+                disabled={isSendingTest === reminder.id}
+                className="flex items-center gap-1.5 text-xs text-[#2D6A4F] hover:text-[#1E4535] font-bold p-1 rounded-md hover:bg-[#F3EFE6] transition-colors cursor-pointer disabled:opacity-50"
               >
-                <Volume2 className="w-3.5 h-3.5" />
-                <span>تجربة الإشعار الآن</span>
+                {isSendingTest === reminder.id ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>جاري الإرسال للهاتف...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>تجربة الإشعار الحقيقي الآن 📲</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
