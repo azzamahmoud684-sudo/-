@@ -99,17 +99,33 @@ export async function registerPushServiceWorker(): Promise<ServiceWorkerRegistra
  * Fetches the backend VAPID public key with reliable fallback
  */
 export async function fetchVapidPublicKey(): Promise<string> {
-  try {
-    const res = await fetch('/api/push/vapid-public-key');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.publicKey && typeof data.publicKey === 'string' && data.publicKey.trim().length > 20) {
-        return data.publicKey.trim();
+  const endpoints = [
+    '/api/push/vapid-public-key',
+    '/api/vapid-public-key',
+    '/api/push/public-key',
+  ];
+
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep, {
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (
+          data.publicKey &&
+          typeof data.publicKey === 'string' &&
+          data.publicKey.trim().length > 20
+        ) {
+          return data.publicKey.trim();
+        }
       }
+    } catch (err) {
+      console.warn(`[Push] Failed to get VAPID key from ${ep}:`, err);
     }
-  } catch (err) {
-    console.warn('[Push] Failed to get VAPID key from backend, using default fallback key:', err);
   }
+
   return DEFAULT_VAPID_PUBLIC_KEY;
 }
 
@@ -300,31 +316,64 @@ export async function subscribeToWebPush(
       throw new Error('مفاتيح تشفير التنبيهات غير متوفرة من متصفح الهاتف');
     }
 
-    // 7. Send subscription to backend server
-    const response = await fetch('/api/push/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        subscription: payload,
-        preferences,
-        coordinates,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Cairo',
-      }),
+    // 7. Send subscription to backend server (trying primary and fallback endpoints)
+    const endpointsToTry = [
+      '/api/push/subscribe',
+      '/api/subscribe',
+      '/api/push/subscriptions',
+    ];
+
+    let response: Response | null = null;
+    let resData: any = {};
+    let lastStatus = 0;
+
+    const requestBody = JSON.stringify({
+      subscription: payload,
+      preferences,
+      coordinates,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Cairo',
     });
 
-    const responseText = await response.text();
-    let resData: any = {};
-    try {
-      resData = JSON.parse(responseText);
-    } catch {
-      console.warn('[Push] Server returned non-JSON:', responseText);
+    for (const ep of endpointsToTry) {
+      try {
+        const res = await fetch(ep, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          credentials: 'same-origin',
+          body: requestBody,
+        });
+
+        lastStatus = res.status;
+        if (res.status === 404) {
+          console.warn(`[Push] Endpoint ${ep} returned 404, attempting fallback...`);
+          continue;
+        }
+
+        response = res;
+        const text = await res.text();
+        try {
+          resData = JSON.parse(text);
+        } catch {
+          console.warn('[Push] Server returned non-JSON:', text);
+        }
+
+        // If status 200 or 201, subscription saved successfully!
+        if (res.ok && (res.status === 200 || res.status === 201)) {
+          break;
+        }
+      } catch (netErr) {
+        console.warn(`[Push] Network error attempting ${ep}:`, netErr);
+      }
     }
 
-    if (!response.ok) {
+    if (!response || !response.ok) {
       const serverError =
         resData.error ||
         resData.message ||
-        `فشل حفظ الاشتراك في خادم الإشعارات (رمز الخطأ: ${response.status})`;
+        `فشل حفظ الاشتراك في خادم الإشعارات (رمز الخطأ: ${lastStatus || 'غير معروف'})`;
       throw new Error(serverError);
     }
 
@@ -365,18 +414,23 @@ export async function unsubscribeFromWebPush(): Promise<{ success: boolean; erro
  */
 export async function verifySubscriptionWithServer(endpoint: string): Promise<boolean> {
   if (!endpoint) return false;
-  try {
-    const res = await fetch('/api/push/check', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ endpoint }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return Boolean(data.registered);
+  const checkEndpoints = ['/api/push/check', '/api/check'];
+  for (const ep of checkEndpoints) {
+    try {
+      const res = await fetch(ep, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ endpoint }),
+      });
+      if (res.status === 404) continue;
+      if (res.ok) {
+        const data = await res.json();
+        return Boolean(data.registered);
+      }
+    } catch (e) {
+      console.warn(`[Push] Error verifying subscription with ${ep}:`, e);
     }
-  } catch (e) {
-    console.warn('[Push] Error verifying subscription with server:', e);
   }
   return false;
 }
@@ -479,24 +533,36 @@ export async function sendTestPushNotification(
 
     const endpoint = subscription.endpoint;
 
-    const res = await fetch('/api/push/test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        endpoint,
-        title: customTitle || 'أُنس - تجربة إشعار الأذان والهاتف 🕌',
-        body:
-          customBody ||
-          'ما شاء الله! إشعارات أُنس والأذان مفعلة وتعمل بنجاح على هاتفك حتى عند إغلاق التطبيق وقفل الشاشة 🤍',
-      }),
-    });
+    const testEndpoints = ['/api/push/test', '/api/test'];
+    let lastErr = 'تعذر إرسال الإشعار التجريبي';
 
-    const data = await res.json();
-    if (!res.ok) {
-      return { success: false, error: data.error || 'تعذر إرسال الإشعار التجريبي' };
+    for (const ep of testEndpoints) {
+      try {
+        const res = await fetch(ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            endpoint,
+            title: customTitle || 'أُنس - تجربة إشعار الأذان والهاتف 🕌',
+            body:
+              customBody ||
+              'ما شاء الله! إشعارات أُنس والأذان مفعلة وتعمل بنجاح على هاتفك حتى عند إغلاق التطبيق وقفل الشاشة 🤍',
+          }),
+        });
+
+        if (res.status === 404) continue;
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success) {
+          return { success: true, delivered: data.delivered, message: data.message };
+        }
+        lastErr = data.error || lastErr;
+      } catch (err: any) {
+        lastErr = err.message || lastErr;
+      }
     }
 
-    return { success: true, delivered: data.delivered, message: data.message };
+    return { success: false, error: lastErr };
   } catch (err: any) {
     return { success: false, error: err.message || 'فشل الاتصال بخادم الإشعارات' };
   }
@@ -514,16 +580,26 @@ export async function updatePushPreferencesOnServer(
     const sub = await getCurrentPushSubscription();
     if (!sub) return false;
 
-    const res = await fetch('/api/push/preferences', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        endpoint: sub.endpoint,
-        preferences,
-        coordinates,
-      }),
-    });
-    return res.ok;
+    const prefEndpoints = ['/api/push/preferences', '/api/preferences'];
+    for (const ep of prefEndpoints) {
+      try {
+        const res = await fetch(ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            endpoint: sub.endpoint,
+            preferences,
+            coordinates,
+          }),
+        });
+        if (res.status === 404) continue;
+        if (res.ok) return true;
+      } catch {
+        // try next
+      }
+    }
+    return false;
   } catch {
     return false;
   }

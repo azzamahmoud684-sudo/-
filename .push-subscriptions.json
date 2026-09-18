@@ -82,5 +82,131 @@
     "createdAt": 1789740898113,
     "lastActive": 1789740898113,
     "lastSentKeys": {}
+  },
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/eduV6Nd0DM4:APA91bGnG9lMMA8COdsqZCWr39oZMT6qumub62hOkYIiIn0LhamVtpwaRgEbwNOnDvMugLrjS0VKexc99JfSjK7KC4KmeFFsn6FEl_4VJlGlzmMRFJ-xoGvUcPnwNiJI98flFet1y6gQ",
+    "keys": {
+      "p256dh": "BA_Zb6ynV9A2R8ptFHKNJH4faLTmVZeE3CNu7jRsGS7bRhhl87hRdueLB8YI3uqFijtKxnAGq6K0cNWw9cKUQIo",
+      "auth": "BYCQJl8VOObRml5jD4m_EA"
+    },
+    "preferences": {
+      "prayers": true,
+      "athkar": true,
+      "tasks": false,
+      "occasions": true
+    },
+    "coordinates": {
+      "lat": 30.0444,
+      "lng": 31.2357
+    },
+    "timezone": "Africa/Cairo",
+    "createdAt": 1789741370792,
+    "lastActive": 1789741370792,
+    "lastSentKeys": {}
+  },
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/eeK_kPc3g1s:APA91bFEN_QLzXd_Qwws71_T0QsEY5w6_m_Pcmc3MGgc7v-HM-u--zbx1JATIFKv2z_WANVw4kgpAPQf1lLBp1Vn8a-TKamKgB4UKf9pFva9SOwymmzX098N9Yp7uhx_uxjJOzsjNjYd",
+    "keys": {
+      "p256dh": "BAJmThdl8dmVuRnZi5fYIly-h7LZi86bjJiKf1q_RFauNJcoNXdpc4UMJnCArLjks-GRaXHynSZi4hpFXU7SakU",
+      "auth": "LDv4P-1XVH7vkfIP9j_YdQ"
+    },
+    "preferences": {
+      "prayers": true,
+      "athkar": true,
+      "tasks": false,
+      "occasions": true
+    },
+    "coordinates": {
+      "lat": 30.0444,
+      "lng": 31.2357
+    },
+    "timezone": "Africa/Cairo",
+    "createdAt": 1789741409984,
+    "lastActive": 1789741409984,
+    "lastSentKeys": {}
+  },
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/cZLcQAoD56I:APA91bFQBcS9FJUYpjC3Phl5D6e1weMzhd9VSHN1-4w5oZ81dVAL99CynKw27zqEtvhT6_N6L2_4j5i15I-7vS3-sATngzFg6m4RaQ1NPJ9D1ryyaR_GkGj-MhX_PuxXBW-DrEzEs9d_",
+    "keys": {
+      "p256dh": "BEahzmHClTfIyc50bPXU0PeQoBkaOvmxaPzeO1oEhmuL1R_FVZ0HzsS4ro0EWjGfOHJPIc5kwTlBvWs2-QbMNWo",
+      "auth": "DsENdikj9euBY0RL9ev9kg"
+    },
+    "preferences": {
+      "prayers": true,
+      "athkar": true,
+      "tasks": false,
+      "occasions": true
+    },
+    "coordinates": {
+      "lat": 30.0444,
+      "lng": 31.2357
+    },
+    "timezone": "Africa/Cairo",
+    "createdAt": 1789741410305,
+    "lastActive": 1789742307248,
+    "lastSentKeys": {}
+  },
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/test-endpoint-123",
+    "keys": {
+      "p256dh": "BG88411...",
+      "auth": "ABC..."
+    },
+    "preferences": {
+      "prayers": true,
+      "athkar": true,
+      "tasks": true,
+      "occasions": true
+    },
+    "coordinates": {
+      "lat": 30.0444,
+      "lng": 31.2357
+    },
+    "timezone": "Africa/Cairo",
+    "createdAt": 1789742666533,
+    "lastActive": 1789742666533,
+    "lastSentKeys": {}
+  },
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/phone-device-alpha",
+    "keys": {
+      "p256dh": "BM123...",
+      "auth": "Auth456..."
+    },
+    "preferences": {
+      "prayers": true,
+      "athkar": true,
+      "tasks": true,
+      "occasions": true
+    },
+    "coordinates": {
+      "lat": 30.0444,
+      "lng": 31.2357
+    },
+    "timezone": "Africa/Cairo",
+    "createdAt": 1789742887501,
+    "lastActive": 1789742887501,
+    "lastSentKeys": {}
+  },
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/alias-check",
+    "keys": {
+      "p256dh": "BM123...",
+      "auth": "Auth456..."
+    },
+    "preferences": {
+      "prayers": true,
+      "athkar": true,
+      "tasks": true,
+      "occasions": true
+    },
+    "coordinates": {
+      "lat": 30.0444,
+      "lng": 31.2357
+    },
+    "timezone": "Africa/Cairo",
+    "createdAt": 1789742889963,
+    "lastActive": 1789742889963,
+    "lastSentKeys": {}
   }
 ]

@@ -1,9 +1,104 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import webpush from 'web-push';
-import { createServer as createViteServer } from 'vite';
-import { calculatePrayerTimes } from './src/utils/prayerCalculator';
+
+// Astronomical calculations for Egyptian Survey Authority prayer times
+function calculatePrayerTimes(date: Date, lat: number, lon: number): {
+  fajr: Date;
+  dhuhr: Date;
+  asr: Date;
+  maghrib: Date;
+  isha: Date;
+} {
+  const D2R = Math.PI / 180;
+  const R2D = 180 / Math.PI;
+  const sinD = (deg: number) => Math.sin(deg * D2R);
+  const cosD = (deg: number) => Math.cos(deg * D2R);
+  const tanD = (deg: number) => Math.tan(deg * D2R);
+  const asinD = (x: number) => Math.asin(x) * R2D;
+  const acosD = (x: number) => Math.acos(x) * R2D;
+  const atanD = (x: number) => Math.atan(x) * R2D;
+  const fixHour = (h: number) => ((h % 24) + 24) % 24;
+
+  const tzOffset = -date.getTimezoneOffset() / 60;
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+
+  const a = Math.floor((14 - month) / 12);
+  const y = year + 4800 - a;
+  const m = month + 12 * a - 3;
+  const jdn =
+    day +
+    Math.floor((153 * m + 2) / 5) +
+    365 * y +
+    Math.floor(y / 4) -
+    Math.floor(y / 100) +
+    Math.floor(y / 400) -
+    32045;
+  const d = jdn - 2451545.0 + 0.5;
+
+  const g = (357.529 + 0.98560028 * d) % 360;
+  const q = (280.459 + 0.98564736 * d) % 360;
+  const L = (q + 1.915 * sinD(g) + 0.02 * sinD(2 * g)) % 360;
+  const e = 23.439 - 0.00000036 * d;
+
+  const sinDec = sinD(e) * sinD(L);
+  const dec = asinD(sinDec);
+  let RA = atanD(cosD(e) * tanD(L));
+  if (L >= 0 && L < 180) {
+    if (RA < 0) RA += 180;
+  } else {
+    if (RA > 0) RA += 180;
+    else RA += 360;
+  }
+
+  const eot = (q - RA) / 15;
+  const solarNoon = 12 + tzOffset - lon / 15 - eot;
+
+  function hourAngle(alpha: number): number {
+    const top = sinD(alpha) - sinD(lat) * sinD(dec);
+    const bottom = cosD(lat) * cosD(dec);
+    const val = top / bottom;
+    if (val > 1) return 0;
+    if (val < -1) return 180;
+    return acosD(val);
+  }
+
+  const sunRiseSetAngle = -0.833;
+  const h0 = hourAngle(sunRiseSetAngle);
+  const maghribHour = solarNoon + h0 / 15;
+
+  // Egyptian survey: Fajr 19.5°, Isha 17.5°
+  const hFajr = hourAngle(-19.5);
+  const fajrHour = solarNoon - hFajr / 15;
+
+  const asrAltitude = 90 - atanD(1 + tanD(Math.abs(lat - dec)));
+  const hAsr = hourAngle(asrAltitude);
+  const asrHour = solarNoon + hAsr / 15;
+
+  const hIsha = hourAngle(-17.5);
+  const ishaHour = solarNoon + hIsha / 15;
+
+  function hourToDate(h: number): Date {
+    const fixedH = fixHour(h);
+    const hours = Math.floor(fixedH);
+    const minsFloat = (fixedH - hours) * 60;
+    const minutes = Math.floor(minsFloat);
+    const seconds = Math.floor((minsFloat - minutes) * 60);
+    return new Date(year, month - 1, day, hours, minutes, seconds);
+  }
+
+  return {
+    fajr: hourToDate(fajrHour),
+    dhuhr: hourToDate(solarNoon),
+    asr: hourToDate(asrHour),
+    maghrib: hourToDate(maghribHour),
+    isha: hourToDate(ishaHour),
+  };
+}
 
 interface PushPreference {
   prayers: boolean;
@@ -137,6 +232,7 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+  app.use(express.text({ limit: '2mb', type: ['text/*', 'application/json'] }));
 
   // CORS and preflight headers for all environments (iframe, previews, dev, mobile)
   app.use((req, res, next) => {
@@ -154,7 +250,7 @@ async function startServer() {
   });
 
   // Health check endpoint
-  app.get('/api/health', (_req: Request, res: Response) => {
+  app.get(['/api/health', '/api/ping'], (_req: Request, res: Response) => {
     res.json({
       status: 'ok',
       pushEnabled: true,
@@ -162,22 +258,27 @@ async function startServer() {
     });
   });
 
-  // 1. Get VAPID Public Key for client subscription
-  app.get('/api/push/vapid-public-key', (_req: Request, res: Response) => {
-    res.json({
-      publicKey: vapidPublicKey,
-    });
-  });
-
-  // Also support alias /api/push/public-key
-  app.get('/api/push/public-key', (_req: Request, res: Response) => {
+  // 1. Get VAPID Public Key for client subscription (with all common aliases)
+  const vapidRoutes = [
+    '/api/push/vapid-public-key',
+    '/api/push/public-key',
+    '/api/vapid-public-key',
+    '/api/public-key',
+    '/api/vapidPublicKey',
+  ];
+  app.get(vapidRoutes, (_req: Request, res: Response) => {
     res.json({
       publicKey: vapidPublicKey,
     });
   });
 
   // Check / Verify if an endpoint is already registered and saved on the server
-  app.post('/api/push/check', (req: Request, res: Response) => {
+  const checkRoutes = [
+    '/api/push/check',
+    '/api/check',
+    '/api/push/verify',
+  ];
+  app.post(checkRoutes, (req: Request, res: Response) => {
     const { endpoint } = req.body || {};
     if (!endpoint || typeof endpoint !== 'string') {
       res.json({ registered: false, error: 'Endpoint is required' });
@@ -190,8 +291,14 @@ async function startServer() {
     });
   });
 
-  // 2. Subscribe endpoint
-  app.post('/api/push/subscribe', (req: Request, res: Response) => {
+  // 2. Subscribe endpoint (with all common aliases)
+  const subscribeRoutes = [
+    '/api/push/subscribe',
+    '/api/subscribe',
+    '/api/push/subscriptions',
+    '/api/subscriptions',
+  ];
+  app.post(subscribeRoutes, (req: Request, res: Response) => {
     try {
       let body = req.body;
       if (typeof body === 'string') {
@@ -282,7 +389,7 @@ async function startServer() {
         `[Push Server] Subscription registered successfully (Persisted: ${savedOk}). Total active devices: ${subscriptions.length}`
       );
 
-      res.json({
+      res.status(200).json({
         success: true,
         message: 'تم تفعيل وحفظ اشتراك الإشعارات بنجاح في خادم أُنس',
         registered: true,
@@ -296,8 +403,12 @@ async function startServer() {
     }
   });
 
-  // 3. Unsubscribe endpoint
-  app.post('/api/push/unsubscribe', (req: Request, res: Response) => {
+  // 3. Unsubscribe endpoint (with aliases)
+  const unsubscribeRoutes = [
+    '/api/push/unsubscribe',
+    '/api/unsubscribe',
+  ];
+  app.post(unsubscribeRoutes, (req: Request, res: Response) => {
     try {
       const { endpoint } = req.body || {};
       if (!endpoint) {
@@ -314,8 +425,12 @@ async function startServer() {
     }
   });
 
-  // 4. Update notification preferences
-  app.post('/api/push/preferences', (req: Request, res: Response) => {
+  // 4. Update notification preferences (with aliases)
+  const preferencesRoutes = [
+    '/api/push/preferences',
+    '/api/preferences',
+  ];
+  app.post(preferencesRoutes, (req: Request, res: Response) => {
     try {
       const { endpoint, preferences, coordinates } = req.body || {};
       if (!endpoint) {
@@ -338,8 +453,12 @@ async function startServer() {
     }
   });
 
-  // 5. Send Real Instant Test Push Notification
-  app.post('/api/push/test', async (req: Request, res: Response) => {
+  // 5. Send Real Instant Test Push Notification (with aliases)
+  const testRoutes = [
+    '/api/push/test',
+    '/api/test',
+  ];
+  app.post(testRoutes, async (req: Request, res: Response) => {
     const { endpoint, title, body } = req.body;
 
     let targets = endpoint
@@ -481,7 +600,7 @@ async function startServer() {
         const lat = sub.coordinates?.lat || 30.0444;
         const lng = sub.coordinates?.lng || 31.2357;
         try {
-          const prayerTimes = calculatePrayerTimes(now, lat, lng, 'Egyptian');
+          const prayerTimes = calculatePrayerTimes(now, lat, lng);
           const prayerConfigs = [
             { id: 'fajr', name: 'الفجر', date: prayerTimes.fajr },
             { id: 'dhuhr', name: 'الظهر', date: prayerTimes.dhuhr },
@@ -616,6 +735,7 @@ async function startServer() {
 
   // Vite middleware setup (per framework instructions)
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
