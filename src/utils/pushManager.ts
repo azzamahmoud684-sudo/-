@@ -293,6 +293,29 @@ export async function unsubscribeFromWebPush(): Promise<{ success: boolean; erro
 }
 
 /**
+ * Gets the full detailed status of push notifications on this device
+ */
+export async function getDetailedPushStatus(): Promise<{
+  isSupported: boolean;
+  permission: NotificationPermission;
+  isSubscribed: boolean;
+  endpoint?: string;
+}> {
+  const supported = isPushSupported();
+  const perm = getNotificationPermission();
+  let sub: PushSubscription | null = null;
+  if (supported) {
+    sub = await getCurrentPushSubscription();
+  }
+  return {
+    isSupported: supported,
+    permission: perm,
+    isSubscribed: Boolean(sub),
+    endpoint: sub?.endpoint,
+  };
+}
+
+/**
  * Triggers a real test push notification from backend to this device
  * Auto-subscribes if user already granted permission!
  */
@@ -322,6 +345,25 @@ export async function sendTestPushNotification(
       }
     }
 
+    // Instant local notification feedback via service worker registration
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && Notification.permission === 'granted') {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        reg.showNotification(customTitle || 'أُنس - تجربة إشعار الأذان 🕌', {
+          body: customBody || 'إشعارات أُنس والأذان مفعلة بنجاح وتصلك حتى عند إغلاق التطبيق وقفل الشاشة 🤍',
+          icon: '/assets/icon-192.png',
+          badge: '/assets/badge-72.png',
+          vibrate: [200, 100, 200, 100, 300],
+          tag: 'test-direct-' + Date.now(),
+          renotify: true,
+          requireInteraction: false,
+          data: { url: '/' },
+        } as any).catch(() => {});
+      } catch {
+        // Continue to server push
+      }
+    }
+
     if (!subscription) {
       return {
         success: false,
@@ -336,10 +378,10 @@ export async function sendTestPushNotification(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         endpoint,
-        title: customTitle || 'أُنس - تذكير طيب 🌙',
+        title: customTitle || 'أُنس - تجربة إشعار الأذان والهاتف 🕌',
         body:
           customBody ||
-          'تذكير من تطبيق أُنس: لا تنسَ ذكر الله والدعاء في هذا الوقت المبارك 🤍',
+          'ما شاء الله! إشعارات أُنس والأذان مفعلة وتعمل بنجاح على هاتفك حتى عند إغلاق التطبيق وقفل الشاشة 🤍',
       }),
     });
 

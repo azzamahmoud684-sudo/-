@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Clock, ChevronLeft, Check, Sparkles, Moon } from 'lucide-react';
+import { Clock, ChevronLeft, Check, Sparkles, Moon, Bell } from 'lucide-react';
 import { getNextPrayerCountdown, getTodayPrayerTimes } from '../data/prayerTimes';
 
 interface HomePrayersCardProps {
   prayersCompleted: string[];
   onTogglePrayer: (prayerId: string) => void;
   onOpenPrayers: () => void;
+  onOpenReminders?: () => void;
 }
 
 export const HomePrayersCard: React.FC<HomePrayersCardProps> = ({
   prayersCompleted = [],
   onTogglePrayer,
   onOpenPrayers,
+  onOpenReminders,
 }) => {
   const [countdown, setCountdown] = useState(() => getNextPrayerCountdown());
 
@@ -76,15 +78,29 @@ export const HomePrayersCard: React.FC<HomePrayersCardProps> = ({
           </div>
         </div>
 
-        {/* Link to full prayer times */}
-        <button
-          onClick={onOpenPrayers}
-          className="px-2.5 sm:px-3 py-1.5 rounded-2xl bg-[#FAF7F2] hover:bg-[#2D6A4F] text-[#736B63] hover:text-white border border-[#E8E2D5] text-[11px] sm:text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs group"
-          title="عرض جدول مواقيت الصلاة كاملاً والأذان"
-        >
-          <span>المواقيت</span>
-          <ChevronLeft className="w-3.5 h-3.5 group-hover:translate-x-[-2px] transition-transform" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          {onOpenReminders && (
+            <button
+              id="home-prayer-athan-notifications-btn"
+              onClick={onOpenReminders}
+              className="p-1.5 sm:px-2 py-1.5 rounded-2xl bg-[#FAF7F2] hover:bg-[#2D6A4F] text-[#2D6A4F] hover:text-white border border-[#E8E2D5] text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+              title="تفعيل إشعارات الأذان وتنبيهات الهاتف"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline">الأذان</span>
+            </button>
+          )}
+
+          {/* Link to full prayer times */}
+          <button
+            onClick={onOpenPrayers}
+            className="px-2.5 sm:px-3 py-1.5 rounded-2xl bg-[#FAF7F2] hover:bg-[#2D6A4F] text-[#736B63] hover:text-white border border-[#E8E2D5] text-[11px] sm:text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs group"
+            title="عرض جدول مواقيت الصلاة كاملاً والأذان"
+          >
+            <span>المواقيت</span>
+            <ChevronLeft className="w-3.5 h-3.5 group-hover:translate-x-[-2px] transition-transform" />
+          </button>
+        </div>
       </div>
 
       {/* 2. Primary 5 Obligatory Prayers Grid */}

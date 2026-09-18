@@ -437,6 +437,7 @@ export default function App() {
               prayersCompleted={progress.prayersCompletedToday}
               onTogglePrayer={handleTogglePrayer}
               onOpenPrayers={() => setActiveTab('prayer')}
+              onOpenReminders={() => setActiveTab('reminders')}
             />
 
             {/* 6. Grid of Cards: 📿 التسبيح, 📝 مهامي اليومية, ☀️ الأذكار, 🌙 المناسبات الإسلامية, 🤍 التبرع, 📖 القرآن */}

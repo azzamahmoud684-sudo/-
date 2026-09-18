@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Flame, Sparkles, Moon, Sun, Info, User, RotateCcw, Check, X, Shield } from 'lucide-react';
+import { Flame, Sparkles, Moon, Sun, Info, User, RotateCcw, Check, X, Shield, Bell } from 'lucide-react';
 import { UserProgress } from '../types';
 
 interface HeaderProps {
@@ -88,6 +88,17 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <span className="text-sm">🔥</span>
               <span>{progress.streakDays} {progress.streakDays === 1 ? 'يوم' : 'أيام'}</span>
+            </button>
+
+            {/* Notifications & Adhan Bell Button */}
+            <button
+              id="header-reminders-btn"
+              onClick={onOpenReminders}
+              className="relative p-2 rounded-full bg-white hover:bg-[#F3EFE6] border border-[#E8E2D5] text-[#2D6A4F] transition-all cursor-pointer shadow-xs active:scale-95 flex items-center justify-center"
+              title="إعدادات الإشعارات وتنبيهات الهاتف والأذان"
+            >
+              <Bell className="w-4 h-4" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#2D6A4F] rounded-full animate-pulse"></span>
             </button>
 
             {/* User Profile / Guest Badge */}

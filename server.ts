@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import webpush from 'web-push';
 import { createServer as createViteServer } from 'vite';
+import { calculatePrayerTimes } from './src/utils/prayerCalculator';
 
 interface PushPreference {
   prayers: boolean;
@@ -304,83 +305,128 @@ async function startServer() {
   });
 
   // --- Background Scheduler for Islamic Reminders & Prayers ---
-  // Runs every 60 seconds to check prayer/athkar events
+  // Runs every 30 seconds to check prayer/athkar events and wake device
   setInterval(async () => {
     if (subscriptions.length === 0) return;
 
     const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const timeStr = `${hours}:${minutes}`;
-    const dateStr = now.toISOString().slice(0, 10);
-
-    // 1. Morning Athkar Reminder at 06:30
-    if (timeStr === '06:30') {
-      const key = `athkar-morning-${dateStr}`;
-      await broadcastCategory(
-        'athkar',
-        key,
-        'أذكار الصباح ☀️',
-        '«أصبحنا وأصبح الملك لله والحمد لله».. ابدأ يومك بذكر الله وحصنه الحصين 🌿'
-      );
-    }
-
-    // 2. Evening Athkar Reminder at 17:00
-    if (timeStr === '17:00') {
-      const key = `athkar-evening-${dateStr}`;
-      await broadcastCategory(
-        'athkar',
-        key,
-        'أذكار المساء 🌙',
-        '«أمسينا وأمسى الملك لله».. حان وقت أذكار المساء وطمأنينة القلب 🤍'
-      );
-    }
-
-    // 3. Daily Tasks Evening Reminder at 20:30
-    if (timeStr === '20:30') {
-      const key = `tasks-reminder-${dateStr}`;
-      await broadcastCategory(
-        'tasks',
-        key,
-        'تذكير مهام اليوم 📝',
-        'هل أتممت مهامك وطاعاتك لليوم مع أُنس؟ تفقد قائمة مهامك وأكمل يومك برضا 🌿'
-      );
-    }
-  }, 60 * 1000);
-
-  async function broadcastCategory(
-    category: keyof PushPreference,
-    uniqueKey: string,
-    title: string,
-    body: string
-  ) {
+    const nowUtcMs = now.getTime();
     const deadEndpoints: string[] = [];
 
     for (const sub of subscriptions) {
-      if (!sub.preferences || !sub.preferences[category]) continue;
-      if (sub.lastSentKeys && sub.lastSentKeys[uniqueKey]) continue;
-
+      const userTz = sub.timezone || 'Africa/Cairo';
+      let localTimeStr = '12:00';
+      let dateStr = now.toISOString().slice(0, 10);
       try {
-        await webpush.sendNotification(
-          {
-            endpoint: sub.endpoint,
-            keys: sub.keys,
-          },
-          JSON.stringify({
-            title,
-            body,
-            icon: '/assets/icon-192.png',
-            badge: '/assets/badge-72.png',
-            tag: uniqueKey,
-            data: { url: '/', timestamp: Date.now() },
-          })
-        );
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: userTz,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).formatToParts(now);
 
-        if (!sub.lastSentKeys) sub.lastSentKeys = {};
-        sub.lastSentKeys[uniqueKey] = 'sent';
-      } catch (err: any) {
-        if (err?.statusCode === 410 || err?.statusCode === 404) {
-          deadEndpoints.push(sub.endpoint);
+        const h = parts.find((p) => p.type === 'hour')?.value || '00';
+        const m = parts.find((p) => p.type === 'minute')?.value || '00';
+        const yr = parts.find((p) => p.type === 'year')?.value || '2026';
+        const mo = parts.find((p) => p.type === 'month')?.value || '01';
+        const dy = parts.find((p) => p.type === 'day')?.value || '01';
+        localTimeStr = `${h}:${m}`;
+        dateStr = `${yr}-${mo}-${dy}`;
+      } catch {
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        localTimeStr = `${hours}:${minutes}`;
+      }
+
+      if (!sub.lastSentKeys) sub.lastSentKeys = {};
+
+      // 1. Check Obligatory Prayers & Adhan
+      if (sub.preferences && sub.preferences.prayers) {
+        const lat = sub.coordinates?.lat || 30.0444;
+        const lng = sub.coordinates?.lng || 31.2357;
+        try {
+          const prayerTimes = calculatePrayerTimes(now, lat, lng, 'Egyptian');
+          const prayerConfigs = [
+            { id: 'fajr', name: 'الفجر', date: prayerTimes.fajr },
+            { id: 'dhuhr', name: 'الظهر', date: prayerTimes.dhuhr },
+            { id: 'asr', name: 'العصر', date: prayerTimes.asr },
+            { id: 'maghrib', name: 'المغرب', date: prayerTimes.maghrib },
+            { id: 'isha', name: 'العشاء', date: prayerTimes.isha },
+          ];
+
+          for (const prayer of prayerConfigs) {
+            const diffMs = Math.abs(nowUtcMs - prayer.date.getTime());
+            // Trigger if within a 90 second window
+            if (diffMs <= 90 * 1000) {
+              const uniqueKey = `prayer-${prayer.id}-${dateStr}`;
+              if (!sub.lastSentKeys[uniqueKey]) {
+                const title = `🕌 أذان صلاة ${prayer.name}`;
+                const body = `«حي على الصلاة، حي على الفلاح».. حان الآن موعد صلاة ${prayer.name}، تقبل الله طاعتكم 🤍`;
+                await sendPushToSubscription(sub, uniqueKey, title, body, deadEndpoints);
+              }
+            }
+          }
+        } catch (calcErr) {
+          console.error('[Push] Prayer calculation error:', calcErr);
+        }
+      }
+
+      // 2. Morning Athkar at 06:30
+      if (sub.preferences && sub.preferences.athkar && localTimeStr === '06:30') {
+        const key = `athkar-morning-${dateStr}`;
+        if (!sub.lastSentKeys[key]) {
+          await sendPushToSubscription(
+            sub,
+            key,
+            'أذكار الصباح ☀️',
+            '«أصبحنا وأصبح الملك لله والحمد لله».. ابدأ يومك بذكر الله وحصنه الحصين 🌿',
+            deadEndpoints
+          );
+        }
+      }
+
+      // 3. Evening Athkar at 17:00
+      if (sub.preferences && sub.preferences.athkar && localTimeStr === '17:00') {
+        const key = `athkar-evening-${dateStr}`;
+        if (!sub.lastSentKeys[key]) {
+          await sendPushToSubscription(
+            sub,
+            key,
+            'أذكار المساء 🌙',
+            '«أمسينا وأمسى الملك لله».. حان وقت أذكار المساء وسكينة القلب 🤍',
+            deadEndpoints
+          );
+        }
+      }
+
+      // 4. Daily Tasks & Evening Reminder at 20:30
+      if (sub.preferences && sub.preferences.tasks && localTimeStr === '20:30') {
+        const key = `tasks-reminder-${dateStr}`;
+        if (!sub.lastSentKeys[key]) {
+          await sendPushToSubscription(
+            sub,
+            key,
+            'تذكير مهام وطاعات اليوم 📝',
+            'هل أتممت طاعاتك ومهامك لليوم مع أُنس؟ تفقد قائمة مهامك وأكمل يومك برضا 🌿',
+            deadEndpoints
+          );
+        }
+      }
+
+      // 5. Sleep Athkar at 22:30
+      if (sub.preferences && sub.preferences.athkar && localTimeStr === '22:30') {
+        const key = `athkar-sleep-${dateStr}`;
+        if (!sub.lastSentKeys[key]) {
+          await sendPushToSubscription(
+            sub,
+            key,
+            'أذكار النوم وسنن الليل 🌙',
+            'اقترب وقت النوم، هل قرأت أذكارك؟.. ليلة هانئة في حفظ الله ورعايته 🤍',
+            deadEndpoints
+          );
         }
       }
     }
@@ -390,6 +436,44 @@ async function startServer() {
       saveSubscriptions();
     } else {
       saveSubscriptions();
+    }
+  }, 30 * 1000);
+
+  async function sendPushToSubscription(
+    sub: StoredSubscription,
+    uniqueKey: string,
+    title: string,
+    body: string,
+    deadList: string[]
+  ) {
+    try {
+      await webpush.sendNotification(
+        {
+          endpoint: sub.endpoint,
+          keys: sub.keys,
+        },
+        JSON.stringify({
+          title,
+          body,
+          icon: '/assets/icon-192.png',
+          badge: '/assets/badge-72.png',
+          tag: uniqueKey,
+          data: { url: '/', timestamp: Date.now() },
+        }),
+        {
+          TTL: 60 * 60,
+          urgency: 'high',
+        }
+      );
+
+      if (!sub.lastSentKeys) sub.lastSentKeys = {};
+      sub.lastSentKeys[uniqueKey] = 'sent';
+      console.log(`[Push Success] Sent ${uniqueKey} to ${sub.endpoint.substring(0, 30)}...`);
+    } catch (err: any) {
+      console.error(`[Push Fail] ${uniqueKey}:`, err?.statusCode || err?.message);
+      if (err?.statusCode === 410 || err?.statusCode === 404) {
+        deadList.push(sub.endpoint);
+      }
     }
   }
 
