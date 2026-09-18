@@ -1,1 +1,86 @@
-[]
+[
+  {
+    "endpoint": "https://example.com/test",
+    "keys": {
+      "p256dh": "abc",
+      "auth": "123"
+    },
+    "preferences": {
+      "prayers": true,
+      "athkar": true,
+      "tasks": true,
+      "occasions": true
+    },
+    "coordinates": {
+      "lat": 30.0444,
+      "lng": 31.2357
+    },
+    "timezone": "Africa/Cairo",
+    "createdAt": 1789740635365,
+    "lastActive": 1789740635365,
+    "lastSentKeys": {}
+  },
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/fake123",
+    "keys": {
+      "p256dh": "BM4-NW2y-q3hzdOXHkrXOpP826Csd7hqbyvnKlAQdLmyDmuaEhMufSMpdPHl8b96rPjRzo-wUB2Psh3C-ex-ukY",
+      "auth": "wJRkoZAeZL049ztVUtTclM"
+    },
+    "preferences": {
+      "prayers": true,
+      "athkar": true,
+      "tasks": true,
+      "occasions": true
+    },
+    "coordinates": {
+      "lat": 30.0444,
+      "lng": 31.2357
+    },
+    "timezone": "Africa/Cairo",
+    "createdAt": 1789740755347,
+    "lastActive": 1789740755347,
+    "lastSentKeys": {}
+  },
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/testphone",
+    "keys": {
+      "p256dh": "BM4-NW2y-q3hzdOXHkrXOpP826Csd7hqbyvnKlAQdLmyDmuaEhMufSMpdPHl8b96rPjRzo-wUB2Psh3C-ex-ukY",
+      "auth": "wJRkoZAeZL049ztVUtTclM"
+    },
+    "preferences": {
+      "prayers": true,
+      "athkar": true,
+      "tasks": true,
+      "occasions": true
+    },
+    "coordinates": {
+      "lat": 30.0444,
+      "lng": 31.2357
+    },
+    "timezone": "Africa/Cairo",
+    "createdAt": 1789740772441,
+    "lastActive": 1789740772441,
+    "lastSentKeys": {}
+  },
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/real-phone-token-xyz",
+    "keys": {
+      "p256dh": "BM4-NW2y-q3hzdOXHkrXOpP826Csd7hqbyvnKlAQdLmyDmuaEhMufSMpdPHl8b96rPjRzo-wUB2Psh3C-ex-ukY",
+      "auth": "wJRkoZAeZL049ztVUtTclM"
+    },
+    "preferences": {
+      "prayers": true,
+      "athkar": true,
+      "tasks": true,
+      "occasions": true
+    },
+    "coordinates": {
+      "lat": 30.0444,
+      "lng": 31.2357
+    },
+    "timezone": "Africa/Cairo",
+    "createdAt": 1789740898113,
+    "lastActive": 1789740898113,
+    "lastSentKeys": {}
+  }
+]

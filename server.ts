@@ -76,32 +76,82 @@ console.log('[Push] VAPID configured. Public Key:', vapidPublicKey.substring(0, 
 
 // 2. Load Stored Subscriptions
 let subscriptions: StoredSubscription[] = [];
+const FALLBACK_SUBSCRIPTIONS_FILE = '/tmp/.push-subscriptions.json';
 
 function loadSubscriptions(): void {
+  let loaded = false;
+  // Try primary location first
   if (fs.existsSync(SUBSCRIPTIONS_FILE)) {
     try {
       const raw = fs.readFileSync(SUBSCRIPTIONS_FILE, 'utf-8');
-      subscriptions = JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        subscriptions = parsed;
+        loaded = true;
+      }
     } catch (err) {
-      console.error('Failed to parse subscriptions file:', err);
-      subscriptions = [];
+      console.error('Failed to parse primary subscriptions file:', err);
+    }
+  }
+
+  // If not loaded or empty, try fallback location
+  if (!loaded && fs.existsSync(FALLBACK_SUBSCRIPTIONS_FILE)) {
+    try {
+      const raw = fs.readFileSync(FALLBACK_SUBSCRIPTIONS_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        subscriptions = parsed;
+      }
+    } catch (err) {
+      console.error('Failed to parse fallback subscriptions file:', err);
     }
   }
 }
 
-function saveSubscriptions(): void {
+function saveSubscriptions(): boolean {
+  let saved = false;
+  const payload = JSON.stringify(subscriptions, null, 2);
+
+  // Attempt 1: primary file
   try {
-    fs.writeFileSync(SUBSCRIPTIONS_FILE, JSON.stringify(subscriptions, null, 2));
+    fs.writeFileSync(SUBSCRIPTIONS_FILE, payload);
+    saved = true;
   } catch (err) {
-    console.error('Failed to save subscriptions file:', err);
+    console.warn('Failed to save to primary subscriptions file, attempting fallback:', err);
   }
+
+  // Attempt 2: fallback file in /tmp
+  try {
+    fs.writeFileSync(FALLBACK_SUBSCRIPTIONS_FILE, payload);
+    saved = true;
+  } catch (err) {
+    console.error('Failed to save to fallback subscriptions file:', err);
+  }
+
+  return saved;
 }
 
 loadSubscriptions();
 
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '2mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+  // CORS and preflight headers for all environments (iframe, previews, dev, mobile)
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header(
+      'Access-Control-Allow-Headers',
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+    );
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
 
   // Health check endpoint
   app.get('/api/health', (_req: Request, res: Response) => {
@@ -119,89 +169,172 @@ async function startServer() {
     });
   });
 
-  // 2. Subscribe endpoint
-  app.post('/api/push/subscribe', (req: Request, res: Response) => {
-    const { subscription, preferences, coordinates, timezone } = req.body;
+  // Also support alias /api/push/public-key
+  app.get('/api/push/public-key', (_req: Request, res: Response) => {
+    res.json({
+      publicKey: vapidPublicKey,
+    });
+  });
 
-    if (!subscription || !subscription.endpoint || !subscription.keys) {
-      res.status(400).json({ error: 'Invalid push subscription payload' });
+  // Check / Verify if an endpoint is already registered and saved on the server
+  app.post('/api/push/check', (req: Request, res: Response) => {
+    const { endpoint } = req.body || {};
+    if (!endpoint || typeof endpoint !== 'string') {
+      res.json({ registered: false, error: 'Endpoint is required' });
       return;
     }
-
-    const defaultPreferences: PushPreference = {
-      prayers: true,
-      athkar: true,
-      tasks: true,
-      occasions: true,
-      ...preferences,
-    };
-
-    const existingIndex = subscriptions.findIndex(
-      (s) => s.endpoint === subscription.endpoint
-    );
-
-    const now = Date.now();
-    const storedItem: StoredSubscription = {
-      endpoint: subscription.endpoint,
-      keys: subscription.keys,
-      preferences: defaultPreferences,
-      coordinates: coordinates || { lat: 30.0444, lng: 31.2357 }, // Cairo default fallback
-      timezone: timezone || 'Africa/Cairo',
-      createdAt: existingIndex >= 0 ? subscriptions[existingIndex].createdAt : now,
-      lastActive: now,
-      lastSentKeys: existingIndex >= 0 ? subscriptions[existingIndex].lastSentKeys || {} : {},
-    };
-
-    if (existingIndex >= 0) {
-      subscriptions[existingIndex] = storedItem;
-    } else {
-      subscriptions.push(storedItem);
-    }
-
-    saveSubscriptions();
-
-    console.log(
-      `[Push] New subscription registered. Total active devices: ${subscriptions.length}`
-    );
-
+    const isRegistered = subscriptions.some((s) => s && s.endpoint === endpoint);
     res.json({
-      success: true,
-      message: 'تم تفعيل اشتراك الإشعارات بنجاح',
-      totalSubscriptions: subscriptions.length,
+      registered: isRegistered,
+      totalDevices: subscriptions.length,
     });
+  });
+
+  // 2. Subscribe endpoint
+  app.post('/api/push/subscribe', (req: Request, res: Response) => {
+    try {
+      let body = req.body;
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body);
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!body) {
+        res.status(400).json({ error: 'لم يتم استلام بيانات في الطلب (Empty payload)' });
+        return;
+      }
+
+      const subscription = body.subscription || body;
+      const preferences = body.preferences;
+      const coordinates = body.coordinates;
+      const timezone = body.timezone;
+
+      const endpoint = subscription?.endpoint;
+      const p256dh =
+        subscription?.keys?.p256dh ||
+        body?.keys?.p256dh ||
+        subscription?.p256dh ||
+        body?.p256dh;
+      const auth =
+        subscription?.keys?.auth ||
+        body?.keys?.auth ||
+        subscription?.auth ||
+        body?.auth;
+
+      if (!endpoint || typeof endpoint !== 'string') {
+        res.status(400).json({
+          error: 'بيانات الاشتراك غير مكتملة: رابط التنبيه الخاص بالجهاز (Endpoint) غير متوفر',
+        });
+        return;
+      }
+
+      if (!p256dh || !auth) {
+        res.status(400).json({
+          error: 'بيانات الاشتراك غير مكتملة: مفاتيح التشفير (p256dh أو auth) غير متوفرة من متصفح الهاتف',
+        });
+        return;
+      }
+
+      const defaultPreferences: PushPreference = {
+        prayers: true,
+        athkar: true,
+        tasks: true,
+        occasions: true,
+        ...(preferences || {}),
+      };
+
+      if (!Array.isArray(subscriptions)) {
+        subscriptions = [];
+      }
+
+      const existingIndex = subscriptions.findIndex(
+        (s) => s && s.endpoint === endpoint
+      );
+
+      const now = Date.now();
+      const storedItem: StoredSubscription = {
+        endpoint,
+        keys: {
+          p256dh: String(p256dh),
+          auth: String(auth),
+        },
+        preferences: defaultPreferences,
+        coordinates: coordinates && typeof coordinates.lat === 'number'
+          ? { lat: coordinates.lat, lng: coordinates.lng }
+          : { lat: 30.0444, lng: 31.2357 }, // Cairo default fallback
+        timezone: typeof timezone === 'string' && timezone.length > 0 ? timezone : 'Africa/Cairo',
+        createdAt: existingIndex >= 0 ? (subscriptions[existingIndex].createdAt || now) : now,
+        lastActive: now,
+        lastSentKeys: existingIndex >= 0 ? (subscriptions[existingIndex].lastSentKeys || {}) : {},
+      };
+
+      if (existingIndex >= 0) {
+        subscriptions[existingIndex] = storedItem;
+      } else {
+        subscriptions.push(storedItem);
+      }
+
+      const savedOk = saveSubscriptions();
+      console.log(
+        `[Push Server] Subscription registered successfully (Persisted: ${savedOk}). Total active devices: ${subscriptions.length}`
+      );
+
+      res.json({
+        success: true,
+        message: 'تم تفعيل وحفظ اشتراك الإشعارات بنجاح في خادم أُنس',
+        registered: true,
+        totalSubscriptions: subscriptions.length,
+      });
+    } catch (serverErr: any) {
+      console.error('[Push Server Error in /api/push/subscribe]:', serverErr);
+      res.status(500).json({
+        error: 'حدث خطأ في الخادم أثناء معالجة وحفظ الاشتراك: ' + (serverErr?.message || 'خطأ غير معروف'),
+      });
+    }
   });
 
   // 3. Unsubscribe endpoint
   app.post('/api/push/unsubscribe', (req: Request, res: Response) => {
-    const { endpoint } = req.body;
-    if (!endpoint) {
-      res.status(400).json({ error: 'Endpoint is required' });
-      return;
+    try {
+      const { endpoint } = req.body || {};
+      if (!endpoint) {
+        res.status(400).json({ error: 'Endpoint is required' });
+        return;
+      }
+
+      subscriptions = subscriptions.filter((s) => s && s.endpoint !== endpoint);
+      saveSubscriptions();
+
+      res.json({ success: true, message: 'تم إلغاء الاشتراك بنجاح من الخادم' });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || 'Error unsubscribing' });
     }
-
-    subscriptions = subscriptions.filter((s) => s.endpoint !== endpoint);
-    saveSubscriptions();
-
-    res.json({ success: true, message: 'تم إلغاء الاشتراك بنجاح' });
   });
 
   // 4. Update notification preferences
   app.post('/api/push/preferences', (req: Request, res: Response) => {
-    const { endpoint, preferences, coordinates } = req.body;
-    if (!endpoint) {
-      res.status(400).json({ error: 'Endpoint is required' });
-      return;
-    }
+    try {
+      const { endpoint, preferences, coordinates } = req.body || {};
+      if (!endpoint) {
+        res.status(400).json({ error: 'Endpoint is required' });
+        return;
+      }
 
-    const sub = subscriptions.find((s) => s.endpoint === endpoint);
-    if (sub) {
-      if (preferences) sub.preferences = { ...sub.preferences, ...preferences };
-      if (coordinates) sub.coordinates = coordinates;
-      sub.lastActive = Date.now();
-      saveSubscriptions();
-      res.json({ success: true, preferences: sub.preferences });
-    } else {
-      res.status(404).json({ error: 'Subscription not found' });
+      const sub = subscriptions.find((s) => s && s.endpoint === endpoint);
+      if (sub) {
+        if (preferences) sub.preferences = { ...sub.preferences, ...preferences };
+        if (coordinates && typeof coordinates.lat === 'number') sub.coordinates = coordinates;
+        sub.lastActive = Date.now();
+        saveSubscriptions();
+        res.json({ success: true, preferences: sub.preferences });
+      } else {
+        res.status(404).json({ error: 'Subscription not found on server' });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || 'Error updating preferences' });
     }
   });
 
@@ -471,7 +604,11 @@ async function startServer() {
       console.log(`[Push Success] Sent ${uniqueKey} to ${sub.endpoint.substring(0, 30)}...`);
     } catch (err: any) {
       console.error(`[Push Fail] ${uniqueKey}:`, err?.statusCode || err?.message);
-      if (err?.statusCode === 410 || err?.statusCode === 404) {
+      if (
+        err?.statusCode === 410 ||
+        err?.statusCode === 404 ||
+        (typeof err?.message === 'string' && (err.message.includes('key') || err.message.includes('p256dh') || err.message.includes('auth')))
+      ) {
         deadList.push(sub.endpoint);
       }
     }

@@ -14,9 +14,15 @@ import {
   ShieldCheck,
   ExternalLink,
   ChevronDown,
+  ChevronUp,
   Info,
   RotateCcw,
   Send,
+  Lock,
+  Unlock,
+  Settings,
+  HelpCircle,
+  X,
 } from 'lucide-react';
 import { ReminderSetting } from '../types';
 import {
@@ -46,10 +52,17 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
   // Push status state
   const [isSupported, setIsSupported] = useState(true);
   const [permission, setPermission] = useState<NotificationPermission>('default');
+  const [isBrowserSubscribed, setIsBrowserSubscribed] = useState(false);
+  const [isServerSaved, setIsServerSaved] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Unblock assistance guide state
+  const [showUnblockGuide, setShowUnblockGuide] = useState(false);
+  const [unblockTab, setUnblockTab] = useState<'android' | 'ios' | 'desktop' | 'system'>('android');
+  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   // Adhan sound state
   const [selectedAthanId, setSelectedAthanId] = useState<string>(() => {
@@ -68,9 +81,48 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
   const selectedAthan =
     ATHAN_AUDIOS.find((a) => a.id === selectedAthanId) || ATHAN_AUDIOS[1];
 
-  // Load push status on mount
+  // Load push status on mount and auto-detect unblocking when user returns to tab
   useEffect(() => {
     refreshPushStatus();
+
+    const checkAndAutoSubscribe = async () => {
+      const currentPerm =
+        typeof window !== 'undefined' && 'Notification' in window
+          ? Notification.permission
+          : 'default';
+      setPermission(currentPerm);
+
+      const status = await getDetailedPushStatus();
+      setIsSupported(status.isSupported);
+      setPermission(status.permission);
+      setIsBrowserSubscribed(status.isBrowserSubscribed);
+      setIsServerSaved(status.isServerSaved);
+      setIsSubscribed(status.isSubscribed);
+
+      // If user unblocked permission and it's now granted, but not subscribed yet
+      if (currentPerm === 'granted' && (!status.isSubscribed || !status.isServerSaved)) {
+        showToast('ما شاء الله! تم اكتشاف فك الحظر، جارٍ تفعيل وحفظ الإشعارات بالخادم 🤍');
+        handleEnablePushNotifications();
+      }
+    };
+
+    const handleFocus = () => {
+      checkAndAutoSubscribe();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkAndAutoSubscribe();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const refreshPushStatus = async () => {
@@ -78,6 +130,8 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
       const status = await getDetailedPushStatus();
       setIsSupported(status.isSupported);
       setPermission(status.permission);
+      setIsBrowserSubscribed(status.isBrowserSubscribed);
+      setIsServerSaved(status.isServerSaved);
       setIsSubscribed(status.isSubscribed);
     } catch (e) {
       console.warn('Error reading push status:', e);
@@ -86,11 +140,23 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 4500);
+    setTimeout(() => setToastMessage(null), 5000);
   };
 
   // Toggle or Request Web Push
   const handleEnablePushNotifications = async () => {
+    // If permission is already denied, the browser prevents asking again programmatically.
+    // Show the unblock guide immediately!
+    const currentPerm =
+      typeof window !== 'undefined' && 'Notification' in window
+        ? Notification.permission
+        : 'default';
+    if (currentPerm === 'denied') {
+      setShowUnblockGuide(true);
+      showToast('الإشعارات محظورة في متصفحك. تفضل بالاطلاع على خطوات فك الحظر السريعة أدناه 🔓');
+      return;
+    }
+
     setIsActivating(true);
     try {
       const preferences: PushPreferences = {
@@ -112,25 +178,64 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
       );
 
       if (result.success) {
-        setIsSubscribed(true);
-        setPermission('granted');
-        showToast(
-          'تم تفعيل إشعارات الهاتف بنجاح! ستصلك تنبيهات الأذان والأذكار حتى عند إغلاق التطبيق 🤍'
-        );
+        // Re-verify the status with backend
+        const status = await getDetailedPushStatus();
+        setIsSupported(status.isSupported);
+        setPermission(status.permission);
+        setIsBrowserSubscribed(status.isBrowserSubscribed);
+        setIsServerSaved(status.isServerSaved);
+        setIsSubscribed(status.isSubscribed);
 
-        // Send a celebratory test notification right away
-        setTimeout(() => {
-          sendTestPushNotification(
-            'أُنس - تفعيل الإشعارات بنجاح 🕌',
-            'ما شاء الله! إشعارات الأذان وأذكار اليوم مفعلة وتصلك حتى عند قفل شاشة الهاتف 🤍'
-          ).catch(() => {});
-        }, 1200);
+        if (status.isSubscribed || status.isServerSaved) {
+          showToast(
+            'تم تفعيل الإشعارات بنجاح وحفظها في الخادم! ستصلك تنبيهات الأذان والأذكار حتى عند إغلاق التطبيق 🤍'
+          );
+
+          // Send a celebratory test notification right away
+          setTimeout(() => {
+            sendTestPushNotification(
+              'أُنس - تم تفعيل الإشعارات بنجاح 🕌',
+              'ما شاء الله! تم حفظ اشتراكك في خادم التنبيهات وستصلك مواقيت الصلاة والأذكار في موعدها 🤍'
+            ).catch(() => {});
+          }, 1200);
+        } else {
+          showToast('تم ربط الهاتف بنجاح، وجارٍ استكمال المزامنة مع خادم التنبيهات...');
+        }
       } else {
         await refreshPushStatus();
-        showToast(result.error || 'تعذر تفعيل الإشعارات، يرجى التحقق من أذونات المتصفح.');
+        if (result.error && result.error.includes('محظور')) {
+          setShowUnblockGuide(true);
+        }
+        showToast(result.error || 'تعذر تفعيل الإشعارات، يرجى المحاولة مرة أخرى.');
       }
     } catch (err: any) {
       showToast(err.message || 'حدث خطأ أثناء تفعيل الإشعارات.');
+    } finally {
+      setIsActivating(false);
+      await refreshPushStatus();
+    }
+  };
+
+  // Re-check permission manually after unblocking in browser settings
+  const handleManualCheckAfterUnblock = async () => {
+    setIsActivating(true);
+    try {
+      const currentPerm =
+        typeof window !== 'undefined' && 'Notification' in window
+          ? Notification.permission
+          : 'default';
+      setPermission(currentPerm);
+
+      if (currentPerm === 'granted') {
+        showToast('تم فك الحظر بنجاح! جارٍ تسجيل هاتفك الآن في خادم التنبيهات...');
+        await handleEnablePushNotifications();
+      } else if (currentPerm === 'denied') {
+        showToast('لا يزال الإذن محظوراً في إعدادات المتصفح. يرجى اتباع الخطوات الموضحة لتغييره إلى السماح (Allow) 🔒');
+        setShowUnblockGuide(true);
+      } else {
+        showToast('الإذن جاهز الآن! اضغطي على زر التفعيل ووافقي على رسالة المتصفح 🔔');
+        await handleEnablePushNotifications();
+      }
     } finally {
       setIsActivating(false);
       await refreshPushStatus();
@@ -312,7 +417,12 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
               {permission === 'granted' && isSubscribed ? (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EBF7EE] text-[#2D6A4F] text-xs font-bold border border-[#2D6A4F]/30">
                   <span className="w-2 h-2 rounded-full bg-[#2D6A4F] animate-pulse" />
-                  مفعلة وتعمل بالخلفية ✓
+                  تم تفعيل الإشعارات بنجاح ومحفوظة بالخادم ✓
+                </span>
+              ) : permission === 'granted' && !isSubscribed ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-900 text-xs font-bold border border-amber-300">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-700" />
+                  الإذن ممنوح بالهاتف ويلزم حفظه بالخادم
                 </span>
               ) : permission === 'denied' ? (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-50 text-red-700 text-xs font-bold border border-red-200">
@@ -331,10 +441,10 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
             <button
               onClick={refreshPushStatus}
               className="text-[11px] text-[#736B63] hover:text-[#2D6A4F] flex items-center gap-1 cursor-pointer transition-colors"
-              title="تحديث حالة الاتصال"
+              title="تحديث حالة الاتصال والتأكد من الخادم"
             >
               <RotateCcw className="w-3 h-3" />
-              <span>فحص الحالة</span>
+              <span>فحص حالة الخادم</span>
             </button>
           </div>
 
@@ -342,12 +452,18 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
           <p className="text-xs sm:text-sm text-[#4A433D] leading-relaxed">
             {permission === 'granted' && isSubscribed ? (
               <>
-                <strong className="text-[#2D6A4F] font-bold">هاتفك جاهز تماماً: </strong>
-                تم ربط جهازك بخادم التنبيهات بنجاح. ستصلك إشعارات الأذان وأذكار الصباح والمساء في أوقاتها المحددة حتى وإن كان هاتفك مقفلاً أو المتصفح مغلقاً.
+                <strong className="text-[#2D6A4F] font-bold">تم تفعيل الإشعارات بنجاح: </strong>
+                تم تسجيل وحفظ جهازك في خادم تنبيهات أُنس بنجاح. ستصلك إشعارات الأذان وأذكار الصباح والمساء في أوقاتها المحددة حتى وإن كان هاتفك مقفلاً أو المتصفح مغلقاً.
+              </>
+            ) : permission === 'granted' && !isSubscribed ? (
+              <>
+                <strong className="text-amber-800 font-bold">تنبيه: </strong>
+                إذن الإشعارات مفعّل في متصفح هاتفك، ولكن يلزم حفظ وتأكيد بيانات الربط في خادم الإشعارات لتصلك التنبيهات في الخلفية وعند قفل الشاشة. اضغطي الزر الأخضر أدناه لحفظ الاشتراك في الخادم فوراً.
               </>
             ) : permission === 'denied' ? (
               <>
-                تم رفض إذن الإشعارات سابقاً في هذا المتصفح. لتفعيلها: اضغطي على أيقونة القفل 🔒 بجانب رابط الموقع في أعلى المتصفح، ثم اسمحي بالإشعارات (Allow)، ثم اضغطي "فحص الحالة".
+                <strong className="text-red-700 font-bold">الإشعارات محظورة في متصفحك: </strong>
+                المتصفح محفوظ حالياً على وضع «محظور / Block»، ولذلك يمنع التطبيق برمجياً من إظهار التنبيهات. لفك الحظر في ثانيتين فقط، اضغطي على زر "خطوات فك الحظر" أدناه.
               </>
             ) : (
               <>
@@ -356,20 +472,218 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
             )}
           </p>
 
+          {/* Special Warning & Helper Card for Denied Permission */}
+          {permission === 'denied' && (
+            <div className="bg-red-50/90 border border-red-200/80 rounded-2xl p-4 sm:p-5 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs sm:text-sm font-bold text-red-900">
+                    كيف تفكين حظر الإشعارات في متصفحك؟
+                  </h4>
+                  <p className="text-[11px] sm:text-xs text-red-800 mt-1 leading-relaxed">
+                    المتصفحات (مثل كروم وسامسونج وسفاري) تمنع المواقع من طلب الإذن مرة أخرى بعد رفضه. لتفعيلها: تحتاجين فقط لتغيير الإذن إلى <strong className="underline">السماح (Allow)</strong> من إعدادات المتصفح، أو فتح التطبيق في نافذة مستقلة إذا كنتِ داخل إطار المعاينة.
+                  </p>
+                </div>
+              </div>
+
+              {/* Iframe specific banner */}
+              {isInIframe && (
+                <div className="bg-amber-100/80 border border-amber-300/80 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2 text-xs text-amber-900 font-medium">
+                    <Info className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>تنبيه: أنتِ داخل نافذة معاينة مضمنة، والمتصفحات تحظر الإشعارات داخل النوافذ المضمنة تلقائياً.</span>
+                  </div>
+                  <a
+                    href={typeof window !== 'undefined' ? window.location.href : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-800 text-white text-xs font-bold hover:bg-amber-900 transition-colors shrink-0"
+                  >
+                    <span>فتح في نافذة متصفح مستقلة</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
+
+              {/* Quick action buttons */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowUnblockGuide(!showUnblockGuide)}
+                  className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                >
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>{showUnblockGuide ? 'إخفاء خطوات فك الحظر' : 'عرض خطوات فك الحظر السريعة 🔓'}</span>
+                  {showUnblockGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleManualCheckAfterUnblock}
+                  disabled={isActivating}
+                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-red-50 text-red-800 font-bold text-xs border border-red-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${isActivating ? 'animate-spin' : ''}`} />
+                  <span>فحص فك الحظر والتفعيل الآن 🔄</span>
+                </button>
+              </div>
+
+              {/* Expandable Step-by-Step Guide */}
+              {showUnblockGuide && (
+                <div className="mt-3 pt-3 border-t border-red-200/80 space-y-3 animate-fade-in">
+                  {/* Device tabs */}
+                  <div className="flex flex-wrap gap-1.5 p-1 bg-red-100/60 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setUnblockTab('android')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        unblockTab === 'android'
+                          ? 'bg-white text-red-900 shadow-2xs'
+                          : 'text-red-700 hover:text-red-900'
+                      }`}
+                    >
+                      📱 هاتف أندرويد (كروم / سامسونج)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUnblockTab('ios')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        unblockTab === 'ios'
+                          ? 'bg-white text-red-900 shadow-2xs'
+                          : 'text-red-700 hover:text-red-900'
+                      }`}
+                    >
+                      🍎 هاتف آيفون (سفاري)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUnblockTab('desktop')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        unblockTab === 'desktop'
+                          ? 'bg-white text-red-900 shadow-2xs'
+                          : 'text-red-700 hover:text-red-900'
+                      }`}
+                    >
+                      💻 الكمبيوتر (كروم / إيدج)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUnblockTab('system')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        unblockTab === 'system'
+                          ? 'bg-white text-red-900 shadow-2xs'
+                          : 'text-red-700 hover:text-red-900'
+                      }`}
+                    >
+                      ⚙️ ضبط نظام الهاتف
+                    </button>
+                  </div>
+
+                  {/* Tab Contents */}
+                  <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-red-200 text-xs text-[#332E29] space-y-2.5 leading-relaxed">
+                    {unblockTab === 'android' && (
+                      <ol className="space-y-2 list-decimal list-inside pr-1">
+                        <li>
+                          <strong>الخطوة 1:</strong> انظري إلى أعلى شاشة المتصفح (بجانب رابط الموقع)، واضغطي على أيقونة <strong>القفل 🔒</strong> أو علامة <strong>الضبط / المنزلقات 🎛️</strong>.
+                        </li>
+                        <li>
+                          <strong>الخطوة 2:</strong> اختاري <strong>الأذونات (Permissions)</strong> أو <strong>إعدادات الموقع (Site settings)</strong>.
+                        </li>
+                        <li>
+                          <strong>الخطوة 3:</strong> اضغطي على <strong>الإشعارات (Notifications)</strong> وغيّريها إلى <strong>السماح (Allow)</strong> أو اضغطي <strong>«إعادة ضبط الأذونات / Reset»</strong>.
+                        </li>
+                        <li>
+                          <strong>الخطوة 4:</strong> ارجعي لهذه الصفحة، واضغطي زر <strong>«فحص فك الحظر والتفعيل الآن 🔄»</strong> وسيتفعل نظام التنبيهات فوراً دون أي مجهود!
+                        </li>
+                      </ol>
+                    )}
+
+                    {unblockTab === 'ios' && (
+                      <div className="space-y-2">
+                        <p className="text-amber-800 font-semibold">
+                          📌 نظام iOS من شركة Apple يشترط حفظ الموقع على الشاشة الرئيسية أولاً لتصلك إشعارات الأذان:
+                        </p>
+                        <ol className="space-y-2 list-decimal list-inside pr-1">
+                          <li>
+                            في متصفح Safari، اضغطي على زر <strong>المشاركة (Share ⬆️)</strong> في أسفل الشاشة.
+                          </li>
+                          <li>
+                            مرري للأسفل واختاري <strong>«إضافة إلى الشاشة الرئيسية» (Add to Home Screen 📲)</strong> ثم اضغطي «إضافة».
+                          </li>
+                          <li>
+                            اخرجي وافتحي تطبيق <strong>«أُنس»</strong> من الشاشة الرئيسية، واضغطي تفعيل الإشعارات وسيطلب منك الإذن مباشرة وتصلك التنبيهات.
+                          </li>
+                        </ol>
+                      </div>
+                    )}
+
+                    {unblockTab === 'desktop' && (
+                      <ol className="space-y-2 list-decimal list-inside pr-1">
+                        <li>
+                          اضغطي على أيقونة <strong>القفل 🔒</strong> أو أزرار الضبط يسار رابط الموقع في شريط العناوين.
+                        </li>
+                        <li>
+                          بجوار خيار <strong>الإشعارات (Notifications)</strong>، اختاري <strong>السماح (Allow)</strong>.
+                        </li>
+                        <li>
+                          حدّثي الصفحة أو اضغطي زر «فحص فك الحظر والتفعيل الآن 🔄».
+                        </li>
+                      </ol>
+                    )}
+
+                    {unblockTab === 'system' && (
+                      <ol className="space-y-2 list-decimal list-inside pr-1">
+                        <li>
+                          إذا كان المتصفح نفسه ممنوعاً من إرسال الإشعارات في نظام هاتفك:
+                        </li>
+                        <li>
+                          افتحي <strong>ضبط الهاتف (Settings)</strong> ← <strong>التطبيقات (Apps)</strong>.
+                        </li>
+                        <li>
+                          اختاري متصفحك (مثل <strong>Chrome</strong> أو <strong>Samsung Internet</strong>).
+                        </li>
+                        <li>
+                          اضغطي على <strong>الإشعارات (Notifications)</strong> وتأكدي من تفعيل <strong>«السماح بالإشعارات»</strong>.
+                        </li>
+                      </ol>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Action Buttons Row */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
             {/* Primary Enable Button */}
             {permission !== 'granted' || !isSubscribed ? (
               <button
                 id="btn-enable-phone-notifications"
-                onClick={handleEnablePushNotifications}
+                onClick={permission === 'denied' ? () => setShowUnblockGuide(true) : handleEnablePushNotifications}
                 disabled={isActivating || !isSupported}
-                className="flex-1 py-3 px-5 rounded-2xl bg-[#2D6A4F] hover:bg-[#1E4535] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50 active:scale-98"
+                className={`flex-1 py-3 px-5 rounded-2xl text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50 active:scale-98 ${
+                  permission === 'denied'
+                    ? 'bg-amber-700 hover:bg-amber-800'
+                    : 'bg-[#2D6A4F] hover:bg-[#1E4535]'
+                }`}
               >
                 {isActivating ? (
                   <>
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>جارٍ تفعيل التنبيهات في هاتفك...</span>
+                    <span>جارٍ حفظ وتأكيد التنبيهات في الخادم...</span>
+                  </>
+                ) : permission === 'denied' ? (
+                  <>
+                    <Unlock className="w-4 h-4" />
+                    <span>🔓 اضغطي هنا لعرض خطوات فك الحظر</span>
+                  </>
+                ) : permission === 'granted' ? (
+                  <>
+                    <RotateCcw className="w-4 h-4" />
+                    <span>🔄 حفظ وتأكيد اشتراك الإشعارات في الخادم الآن</span>
                   </>
                 ) : (
                   <>
@@ -386,7 +700,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
                 className="py-3 px-5 rounded-2xl bg-[#EBF7EE] hover:bg-[#D8F3DC] text-[#2D6A4F] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-[#2D6A4F]/30 transition-all cursor-pointer"
               >
                 <Check className="w-4 h-4" />
-                <span>إعادة مزامنة الإشعارات مع الهاتف</span>
+                <span>إعادة مزامنة الإشعارات مع الخادم</span>
               </button>
             )}
 

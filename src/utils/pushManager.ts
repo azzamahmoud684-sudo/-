@@ -153,6 +153,61 @@ export function savePreferencesLocally(prefs: PushPreferences): void {
 }
 
 /**
+ * Helper to convert ArrayBuffer to Base64
+ */
+function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
+  if (!buffer) return '';
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
+/**
+ * Robustly extracts subscription payload with guaranteed keys
+ */
+export function extractSubscriptionPayload(subscription: PushSubscription): {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+} {
+  const json = subscription.toJSON();
+  let p256dh = json.keys?.p256dh || '';
+  let auth = json.keys?.auth || '';
+
+  // Fallback to direct getKey if toJSON() omitted keys
+  if (!p256dh && typeof subscription.getKey === 'function') {
+    try {
+      const raw = subscription.getKey('p256dh');
+      p256dh = arrayBufferToBase64(raw);
+    } catch (e) {
+      console.warn('[Push] Error getting p256dh key via getKey():', e);
+    }
+  }
+
+  if (!auth && typeof subscription.getKey === 'function') {
+    try {
+      const raw = subscription.getKey('auth');
+      auth = arrayBufferToBase64(raw);
+    } catch (e) {
+      console.warn('[Push] Error getting auth key via getKey():', e);
+    }
+  }
+
+  return {
+    endpoint: subscription.endpoint,
+    keys: {
+      p256dh,
+      auth,
+    },
+  };
+}
+
+/**
  * Subscribes the device to real Android Web Push notifications
  */
 export async function subscribeToWebPush(
@@ -182,7 +237,7 @@ export async function subscribeToWebPush(
         success: false,
         error:
           permission === 'denied'
-            ? 'إذن الإشعارات متوقف في المتصفح. يرجى السماح بالإشعارات من إعدادات المتصفح.'
+            ? 'إذن الإشعارات محظور في إعدادات متصفحك. يرجى الضغط على علامة القفل 🔒 أو إعدادات الموقع بجانب الرابط وتغيير الإشعارات إلى (السماح / Allow).'
             : 'لم يتم منح إذن الإشعارات.',
       };
     }
@@ -203,7 +258,6 @@ export async function subscribeToWebPush(
     const applicationServerKey = urlBase64ToUint8Array(publicKey);
 
     // 5. Check if subscription already exists.
-    // If it exists with a different key or is stale, unsubscribe first to guarantee fresh valid subscription with FCM!
     let subscription = await registration.pushManager.getSubscription();
     if (subscription) {
       const existingKeyRaw = subscription.options?.applicationServerKey;
@@ -216,12 +270,10 @@ export async function subscribeToWebPush(
         ) {
           isMismatch = true;
         }
-      } else {
-        isMismatch = true;
       }
 
       if (isMismatch) {
-        console.log('[Push] Unsubscribing mismatched/stale push subscription...');
+        console.log('[Push] Unsubscribing mismatched push subscription...');
         try {
           await subscription.unsubscribe();
         } catch (e) {
@@ -238,26 +290,42 @@ export async function subscribeToWebPush(
       });
     }
 
-    // 6. Send subscription to backend server
-    const subscriptionJson = subscription.toJSON();
-    if (!subscriptionJson.endpoint || !subscriptionJson.keys) {
-      throw new Error('بيانات الاشتراك غير مكتملة من متصفح الهاتف');
+    // 6. Extract payload with guaranteed keys
+    const payload = extractSubscriptionPayload(subscription);
+    if (!payload.endpoint) {
+      throw new Error('بيانات الاشتراك غير مكتملة: لم يتم إنشاء نقطة تنبيه من المتصفح');
     }
 
+    if (!payload.keys.p256dh || !payload.keys.auth) {
+      throw new Error('مفاتيح تشفير التنبيهات غير متوفرة من متصفح الهاتف');
+    }
+
+    // 7. Send subscription to backend server
     const response = await fetch('/api/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        subscription: subscriptionJson,
+        subscription: payload,
         preferences,
         coordinates,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Cairo',
       }),
     });
 
+    const responseText = await response.text();
+    let resData: any = {};
+    try {
+      resData = JSON.parse(responseText);
+    } catch {
+      console.warn('[Push] Server returned non-JSON:', responseText);
+    }
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'فشل حفظ الاشتراك في خادم الإشعارات');
+      const serverError =
+        resData.error ||
+        resData.message ||
+        `فشل حفظ الاشتراك في خادم الإشعارات (رمز الخطأ: ${response.status})`;
+      throw new Error(serverError);
     }
 
     savePreferencesLocally(preferences);
@@ -293,24 +361,62 @@ export async function unsubscribeFromWebPush(): Promise<{ success: boolean; erro
 }
 
 /**
- * Gets the full detailed status of push notifications on this device
+ * Verifies if an endpoint is registered and active on the backend server
+ */
+export async function verifySubscriptionWithServer(endpoint: string): Promise<boolean> {
+  if (!endpoint) return false;
+  try {
+    const res = await fetch('/api/push/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return Boolean(data.registered);
+    }
+  } catch (e) {
+    console.warn('[Push] Error verifying subscription with server:', e);
+  }
+  return false;
+}
+
+/**
+ * Gets the full detailed status of push notifications on this device,
+ * including verifying directly with the backend server whether it is saved!
  */
 export async function getDetailedPushStatus(): Promise<{
   isSupported: boolean;
   permission: NotificationPermission;
+  isBrowserSubscribed: boolean;
+  isServerSaved: boolean;
   isSubscribed: boolean;
   endpoint?: string;
 }> {
   const supported = isPushSupported();
   const perm = getNotificationPermission();
   let sub: PushSubscription | null = null;
+  let isServerSaved = false;
+
   if (supported) {
     sub = await getCurrentPushSubscription();
   }
+
+  // Check with server if this subscription is actually persisted
+  if (sub && sub.endpoint) {
+    isServerSaved = await verifySubscriptionWithServer(sub.endpoint);
+  }
+
+  // Only consider fully subscribed if browser granted permission,
+  // subscription exists in browser, AND it is confirmed saved in server!
+  const isFullySubscribed = perm === 'granted' && Boolean(sub) && isServerSaved;
+
   return {
     isSupported: supported,
     permission: perm,
-    isSubscribed: Boolean(sub),
+    isBrowserSubscribed: Boolean(sub),
+    isServerSaved,
+    isSubscribed: isFullySubscribed,
     endpoint: sub?.endpoint,
   };
 }
