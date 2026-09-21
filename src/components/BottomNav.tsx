@@ -1,7 +1,7 @@
 import React from 'react';
-import { Home, Landmark, BookOpen, Sparkles, Clock, Award, HeartHandshake } from 'lucide-react';
+import { Home, Landmark, BookOpen, Sparkles, Clock, Award, Compass } from 'lucide-react';
 
-export type NavTab = 'home' | 'prayer' | 'timeline' | 'quran' | 'adhkar' | 'charity' | 'progress' | 'reminders';
+export type NavTab = 'home' | 'seerah' | 'prayer' | 'timeline' | 'quran' | 'adhkar' | 'charity' | 'progress' | 'reminders';
 
 interface BottomNavProps {
   activeTab: NavTab;
@@ -11,6 +11,7 @@ interface BottomNavProps {
 export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab }) => {
   const tabs: { id: NavTab; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'home', label: 'الرئيسية', icon: Home },
+    { id: 'seerah', label: 'السيرة', icon: Compass },
     { id: 'prayer', label: 'الصلاة', icon: Landmark },
     { id: 'quran', label: 'القرآن', icon: BookOpen },
     { id: 'adhkar', label: 'الأذكار', icon: Sparkles },
@@ -19,8 +20,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab }) 
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#FBF9F5]/95 backdrop-blur-lg border-t border-[#E8E2D5] px-2 py-2 safe-area-inset-bottom shadow-lg">
-      <div className="max-w-md mx-auto flex items-center justify-around">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#FBF9F5]/95 backdrop-blur-lg border-t border-[#E8E2D5] px-1 sm:px-2 py-1.5 sm:py-2 safe-area-inset-bottom shadow-lg">
+      <div className="max-w-lg mx-auto flex items-center justify-around">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -29,20 +30,20 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab }) 
               key={tab.id}
               id={`nav-tab-${tab.id}`}
               onClick={() => onChangeTab(tab.id)}
-              className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer select-none min-w-[54px] ${
+              className={`flex flex-col items-center justify-center py-1 px-1 sm:px-2 rounded-xl transition-all cursor-pointer select-none min-w-[44px] sm:min-w-[50px] ${
                 isActive
                   ? 'text-[#1E4535] font-bold'
                   : 'text-[#857B72] hover:text-[#403B36] font-medium'
               }`}
             >
               <div
-                className={`p-1.5 rounded-xl transition-all ${
+                className={`p-1 sm:p-1.5 rounded-xl transition-all ${
                   isActive ? 'bg-[#2D6A4F]/12 scale-105' : 'bg-transparent'
                 }`}
               >
-                <Icon className={`w-5 h-5 transition-transform ${isActive ? 'stroke-[2.4]' : 'stroke-[1.8]'}`} />
+                <Icon className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform ${isActive ? 'stroke-[2.4]' : 'stroke-[1.8]'}`} />
               </div>
-              <span className={`text-[11px] mt-0.5 whitespace-nowrap ${isActive ? 'font-bold text-[#1E4535]' : 'font-normal'}`}>
+              <span className={`text-[10px] sm:text-[11px] mt-0.5 whitespace-nowrap ${isActive ? 'font-bold text-[#1E4535]' : 'font-normal'}`}>
                 {tab.label}
               </span>
             </button>

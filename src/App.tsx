@@ -26,6 +26,7 @@ import { HomeDashboardGrid, DashboardCardItem } from './components/HomeDashboard
 import { HomeNearestOccasionCard } from './components/HomeNearestOccasionCard';
 import { OccasionsModal } from './components/OccasionsModal';
 import { DailyTasksModal } from './components/DailyTasksModal';
+import { SeerahSection } from './components/SeerahSection';
 import {
   loadUserProgress,
   saveUserProgress,
@@ -72,6 +73,7 @@ export default function App() {
   const [isQuranOpen, setIsQuranOpen] = useState(false);
   const [isOccasionsModalOpen, setIsOccasionsModalOpen] = useState(false);
   const [isTasksModalOpen, setIsTasksModalOpen] = useState(false);
+  const [selectedSeerahEventId, setSelectedSeerahEventId] = useState<string | null>(null);
 
   // Refresh tasks helper
   const refreshTasks = (date: string = selectedTaskDate) => {
@@ -440,9 +442,20 @@ export default function App() {
               onOpenReminders={() => setActiveTab('reminders')}
             />
 
-            {/* 6. Grid of Cards: 📿 التسبيح, 📝 مهامي اليومية, ☀️ الأذكار, 🌙 المناسبات الإسلامية, 🤍 التبرع, 📖 القرآن */}
+            {/* 6. Grid of Cards: 🌿 في رحاب السيرة, 📿 التسبيح, 📝 مهامي اليومية, ☀️ الأذكار, 🌙 المناسبات الإسلامية, 🤍 التبرع, 📖 القرآن */}
             <HomeDashboardGrid
               cards={[
+                {
+                  id: 'seerah',
+                  icon: '🌿',
+                  title: 'في رحاب السيرة',
+                  description: 'رحلة تفاعلية نتعرّف فيها على سيرة النبي ﷺ، خطوة بخطوة.',
+                  badge: '18 محطة مباركة',
+                  onClick: () => {
+                    setSelectedSeerahEventId(null);
+                    setActiveTab('seerah');
+                  },
+                },
                 {
                   id: 'tasbeeh',
                   icon: '📿',
@@ -555,6 +568,10 @@ export default function App() {
             onOpenQuran={() => setActiveTab('quran')}
             onOpenWorship={() => handleStartActivity('worship')}
           />
+        )}
+
+        {activeTab === 'seerah' && (
+          <SeerahSection initialEventId={selectedSeerahEventId} />
         )}
 
         {activeTab === 'charity' && <CharitySection />}
