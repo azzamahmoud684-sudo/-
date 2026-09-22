@@ -43,6 +43,7 @@ import {
 } from './utils/storage';
 import { UserProgress, ActivityStatus, ReminderSetting, UserTask } from './types';
 import { ChevronLeft, Compass } from 'lucide-react';
+import { trackPageView } from './utils/analytics';
 
 export default function App() {
   const [progress, setProgress] = useState<UserProgress>(() => loadUserProgress());
@@ -88,6 +89,23 @@ export default function App() {
       refreshTasks(selectedTaskDate);
     }
   }, [progress.userProfile?.id]);
+
+  // Track page views in Google Analytics 4 when navigating sections
+  useEffect(() => {
+    const tabTitles: Record<NavTab, string> = {
+      home: 'الرئيسية | أُنس',
+      seerah: 'في رحاب السيرة | أُنس',
+      prayer: 'مواقيت الصلاة والقبلة | أُنس',
+      timeline: 'الجدول اليومي | أُنس',
+      quran: 'القرآن الكريم | أُنس',
+      adhkar: 'الأذكار والتسابيح | أُنس',
+      reminders: 'التنبيهات والإشعارات | أُنس',
+      progress: 'سجل العبادات والإنجاز | أُنس',
+      charity: 'أوجه الخير والصدقات | أُنس',
+    };
+    const title = tabTitles[activeTab] || document.title;
+    trackPageView(activeTab === 'home' ? '/' : `/${activeTab}`, title);
+  }, [activeTab]);
 
   // Tasks handlers
   const handleSelectTaskDate = (date: string) => {
