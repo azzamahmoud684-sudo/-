@@ -1,64 +1,99 @@
 // Service Worker for Real Android Web Push Notifications - أُنس
-const SW_VERSION = '1.0.0';
+const SW_VERSION = '2.1.0';
 
 self.addEventListener('install', (event) => {
-  // Activate immediately
+  // Activate immediately without waiting for existing clients
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  // Claim all active clients
+  // Claim all active clients immediately
   event.waitUntil(self.clients.claim());
 });
 
 // Handle incoming Web Push message even when the website/browser is closed
 self.addEventListener('push', (event) => {
-  let data = {
-    title: 'أُنس - رفيقك للعبادة 🌙',
-    body: 'حان الآن موعد ذكر الله والصلاة',
-    icon: '/assets/icon-192.png',
-    badge: '/assets/badge-72.png',
-    tag: 'ouns-notification',
-    data: {
-      url: '/',
-      timestamp: Date.now(),
-    },
-    actions: [
-      { action: 'open', title: 'فتح التطبيق 📖' },
-      { action: 'dismiss', title: 'إغلاق ✕' },
-    ],
-  };
+  let parsedPayload = null;
 
   if (event.data) {
     try {
-      const json = event.data.json();
-      data = { ...data, ...json };
-    } catch (e) {
-      data.body = event.data.text() || data.body;
+      parsedPayload = event.data.json();
+    } catch (_jsonErr) {
+      try {
+        const text = event.data.text();
+        if (text && text.trim().length > 0) {
+          // If text happens to be a JSON string
+          if (text.startsWith('{') && text.endsWith('}')) {
+            try {
+              parsedPayload = JSON.parse(text);
+            } catch {
+              parsedPayload = { body: text.trim() };
+            }
+          } else {
+            parsedPayload = { body: text.trim() };
+          }
+        }
+      } catch (_textErr) {
+        parsedPayload = null;
+      }
     }
   }
 
+  // 1. Guaranteed Non-Empty Title
+  let rawTitle = parsedPayload && parsedPayload.title;
+  let finalTitle =
+    typeof rawTitle === 'string' && rawTitle.trim().length > 0
+      ? rawTitle.trim()
+      : 'أُنس - رفيقك للعبادة 🌙';
+
+  // 2. Guaranteed Non-Empty Body (Prevents blank/empty notification cards)
+  let rawBody = parsedPayload && parsedPayload.body;
+  let finalBody =
+    typeof rawBody === 'string' && rawBody.trim().length > 0
+      ? rawBody.trim()
+      : 'حان الآن موعد ذكر الله والصلاة 🤍.. تقبل الله طاعتكم';
+
+  // 3. Absolute icon and badge URLs (Required for reliable display on some Android OEMs)
+  const origin = self.location.origin;
+  const iconUrl = new URL(
+    (parsedPayload && parsedPayload.icon) || '/assets/icon-192.png',
+    origin
+  ).href;
+  const badgeUrl = new URL(
+    (parsedPayload && parsedPayload.badge) || '/assets/badge-72.png',
+    origin
+  ).href;
+
+  const tag =
+    (parsedPayload && parsedPayload.tag) ||
+    'ouns-notification-' + Date.now();
+
+  const urlToOpen =
+    (parsedPayload && parsedPayload.data && parsedPayload.data.url) || '/';
+
   const notificationOptions = {
-    body: data.body,
-    icon: data.icon || '/assets/icon-192.png',
-    badge: data.badge || '/assets/badge-72.png',
-    image: data.image,
-    vibrate: [150, 80, 150, 80, 250],
-    data: data.data || { url: '/' },
-    tag: data.tag || 'ouns-notification-' + Date.now(),
+    body: finalBody,
+    icon: iconUrl,
+    badge: badgeUrl,
+    vibrate: [200, 100, 200, 100, 300],
+    data: {
+      url: urlToOpen,
+      timestamp: Date.now(),
+    },
+    tag: tag,
     renotify: true,
-    requireInteraction: data.requireInteraction !== undefined ? data.requireInteraction : false,
+    requireInteraction: false,
     silent: false,
-    actions: data.actions || [
+    actions: [
       { action: 'open', title: 'فتح أُنس 📖' },
-      { action: 'dismiss', title: 'تم ✓' },
+      { action: 'dismiss', title: 'إغلاق ✕' },
     ],
     dir: 'rtl',
     lang: 'ar',
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title, notificationOptions)
+    self.registration.showNotification(finalTitle, notificationOptions)
   );
 });
 
@@ -66,28 +101,32 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  // If user tapped dismiss, just close
+  // If user tapped dismiss action, just close
   if (event.action === 'dismiss') {
     return;
   }
 
-  const urlToOpen = event.notification.data?.url || '/';
+  const origin = self.location.origin;
+  const urlToOpen = (event.notification.data && event.notification.data.url) || '/';
+  const targetUrl = new URL(urlToOpen, origin).href;
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Check if there is already a window open with our app
-      for (const client of windowClients) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          if ('navigate' in client && urlToOpen !== '/') {
-            client.navigate(urlToOpen);
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((windowClients) => {
+        // If an open window of our app already exists, focus it
+        for (const client of windowClients) {
+          if (client.url.startsWith(origin) && 'focus' in client) {
+            if ('navigate' in client && client.url !== targetUrl) {
+              client.navigate(targetUrl);
+            }
+            return client.focus();
           }
-          return client.focus();
         }
-      }
-      // Otherwise open a new window
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(urlToOpen);
-      }
-    })
+        // Otherwise, open a new window
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+      })
   );
 });

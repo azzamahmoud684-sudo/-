@@ -5,7 +5,13 @@ import fs from 'fs';
 import webpush from 'web-push';
 
 // Astronomical calculations for Egyptian Survey Authority prayer times
-function calculatePrayerTimes(date: Date, lat: number, lon: number): {
+function calculatePrayerTimes(
+  year: number,
+  month: number,
+  day: number,
+  lat: number,
+  lon: number
+): {
   fajr: Date;
   dhuhr: Date;
   asr: Date;
@@ -20,12 +26,6 @@ function calculatePrayerTimes(date: Date, lat: number, lon: number): {
   const asinD = (x: number) => Math.asin(x) * R2D;
   const acosD = (x: number) => Math.acos(x) * R2D;
   const atanD = (x: number) => Math.atan(x) * R2D;
-  const fixHour = (h: number) => ((h % 24) + 24) % 24;
-
-  const tzOffset = -date.getTimezoneOffset() / 60;
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
 
   const a = Math.floor((14 - month) / 12);
   const y = year + 4800 - a;
@@ -56,7 +56,7 @@ function calculatePrayerTimes(date: Date, lat: number, lon: number): {
   }
 
   const eot = (q - RA) / 15;
-  const solarNoon = 12 + tzOffset - lon / 15 - eot;
+  const solarNoonUTC = 12 - lon / 15 - eot;
 
   function hourAngle(alpha: number): number {
     const top = sinD(alpha) - sinD(lat) * sinD(dec);
@@ -69,35 +69,92 @@ function calculatePrayerTimes(date: Date, lat: number, lon: number): {
 
   const sunRiseSetAngle = -0.833;
   const h0 = hourAngle(sunRiseSetAngle);
-  const maghribHour = solarNoon + h0 / 15;
+  const maghribHourUTC = solarNoonUTC + h0 / 15;
 
   // Egyptian survey: Fajr 19.5°, Isha 17.5°
   const hFajr = hourAngle(-19.5);
-  const fajrHour = solarNoon - hFajr / 15;
+  const fajrHourUTC = solarNoonUTC - hFajr / 15;
 
   const asrAltitude = 90 - atanD(1 + tanD(Math.abs(lat - dec)));
   const hAsr = hourAngle(asrAltitude);
-  const asrHour = solarNoon + hAsr / 15;
+  const asrHourUTC = solarNoonUTC + hAsr / 15;
 
   const hIsha = hourAngle(-17.5);
-  const ishaHour = solarNoon + hIsha / 15;
+  const ishaHourUTC = solarNoonUTC + hIsha / 15;
 
-  function hourToDate(h: number): Date {
-    const fixedH = fixHour(h);
-    const hours = Math.floor(fixedH);
-    const minsFloat = (fixedH - hours) * 60;
-    const minutes = Math.floor(minsFloat);
-    const seconds = Math.floor((minsFloat - minutes) * 60);
-    return new Date(year, month - 1, day, hours, minutes, seconds);
+  function toUtcDate(hUtc: number): Date {
+    const baseUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0);
+    return new Date(baseUtcMs + Math.round(hUtc * 3600 * 1000));
   }
 
   return {
-    fajr: hourToDate(fajrHour),
-    dhuhr: hourToDate(solarNoon),
-    asr: hourToDate(asrHour),
-    maghrib: hourToDate(maghribHour),
-    isha: hourToDate(ishaHour),
+    fajr: toUtcDate(fajrHourUTC),
+    dhuhr: toUtcDate(solarNoonUTC),
+    asr: toUtcDate(asrHourUTC),
+    maghrib: toUtcDate(maghribHourUTC),
+    isha: toUtcDate(ishaHourUTC),
   };
+}
+
+// User local date/time extractor based on IANA timezone
+function getUserLocalDateParts(date: Date, timeZone: string) {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timeZone || 'Africa/Cairo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(date);
+    const getVal = (type: string) => parts.find((p) => p.type === type)?.value || '00';
+    const year = parseInt(getVal('year'), 10);
+    const month = parseInt(getVal('month'), 10);
+    const day = parseInt(getVal('day'), 10);
+    const hour = parseInt(getVal('hour'), 10);
+    const minute = parseInt(getVal('minute'), 10);
+    const second = parseInt(getVal('second'), 10);
+    return {
+      year,
+      month,
+      day,
+      hour,
+      minute,
+      second,
+      dateStr: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      timeStr: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+    };
+  } catch {
+    const d = new Date(date);
+    const year = d.getUTCFullYear();
+    const month = d.getUTCMonth() + 1;
+    const day = d.getUTCDate();
+    const hour = d.getUTCHours();
+    const minute = d.getUTCMinutes();
+    const second = d.getUTCSeconds();
+    return {
+      year,
+      month,
+      day,
+      hour,
+      minute,
+      second,
+      dateStr: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      timeStr: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+    };
+  }
+}
+
+interface StoredReminder {
+  id: string;
+  title: string;
+  enabled: boolean;
+  time: string; // HH:mm format, or 'حسب مواقيت الأذان'
+  message: string;
+  isPrayerTime?: boolean;
 }
 
 interface PushPreference {
@@ -114,6 +171,7 @@ interface StoredSubscription {
     auth: string;
   };
   preferences: PushPreference;
+  reminders?: StoredReminder[];
   coordinates?: {
     lat: number;
     lng: number;
@@ -121,12 +179,66 @@ interface StoredSubscription {
   timezone?: string;
   createdAt: number;
   lastActive: number;
-  lastSentKeys?: Record<string, string>; // e.g. 'fajr': '2026-09-14'
+  lastSentKeys?: Record<string, string>; // e.g. 'prayer-fajr-2026-09-22': '2026-09-22T02:16:50.000Z'
 }
+
+const DEFAULT_SERVER_REMINDERS: StoredReminder[] = [
+  {
+    id: 'rem-prayer',
+    title: 'تنبيهات الصلوات الخمس',
+    enabled: true,
+    time: 'حسب مواقيت الأذان',
+    message: 'حان وقت الصلاة 🤍.. استرح بها وأقبل على ربك بسكينة',
+    isPrayerTime: true,
+  },
+  {
+    id: 'rem-morning-adhkar',
+    title: 'أذكار الصباح ☀️',
+    enabled: true,
+    time: '06:30',
+    message: 'حان وقت أذكار الصباح 🌿.. ابدأ يومك بنور الذكر وحفظ الله',
+  },
+  {
+    id: 'rem-quran',
+    title: 'ورد القرآن الكريم 📖',
+    enabled: true,
+    time: '13:30',
+    message: 'لا تنسَ وردك من القرآن اليوم 📖.. آيات تطيب بها الروح والقلب',
+  },
+  {
+    id: 'rem-daily-worship',
+    title: 'عبادة اليوم الموصى بها 🌿',
+    enabled: false,
+    time: '16:30',
+    message: 'اجعل ليومك أثراً طيباً 🌿.. تفقد عبادة اليوم المقترحة في أُنس',
+  },
+  {
+    id: 'rem-evening-adhkar',
+    title: 'أذكار المساء 🌅',
+    enabled: true,
+    time: '17:30',
+    message: 'حان وقت أذكار المساء 🌅.. استودع يومك عند الله بحصن الذكر',
+  },
+  {
+    id: 'rem-sleep-adhkar',
+    title: 'أذكار النوم وسنن الليل 🌙',
+    enabled: true,
+    time: '22:30',
+    message: 'اقترب وقت النوم، هل قرأت أذكارك؟ 🌙.. ليلة هانئة في حفظ الرحمن',
+  },
+  {
+    id: 'rem-witr',
+    title: 'صلاة الوتر 🤍',
+    enabled: true,
+    time: '23:00',
+    message: 'ركعة تضيء ظلمة الليل 🤍.. لا تحرم نفسك أجر الوتر ولو بركعة',
+  },
+];
 
 const PORT = 3000;
 const VAPID_FILE = path.join(process.cwd(), '.vapid-keys.json');
 const SUBSCRIPTIONS_FILE = path.join(process.cwd(), '.push-subscriptions.json');
+const FALLBACK_SUBSCRIPTIONS_FILE = '/tmp/.push-subscriptions.json';
 
 // Canonical permanent VAPID keypair for Web Push
 const DEFAULT_VAPID_PUBLIC_KEY =
@@ -169,58 +281,96 @@ if (!vapidPublicKey || !vapidPrivateKey) {
 webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
 console.log('[Push] VAPID configured. Public Key:', vapidPublicKey.substring(0, 16) + '...');
 
-// 2. Load Stored Subscriptions
+// 2. Load and Persist Subscriptions Robustly
 let subscriptions: StoredSubscription[] = [];
-const FALLBACK_SUBSCRIPTIONS_FILE = '/tmp/.push-subscriptions.json';
 
 function loadSubscriptions(): void {
-  let loaded = false;
-  // Try primary location first
+  let primarySubs: StoredSubscription[] = [];
+  let fallbackSubs: StoredSubscription[] = [];
+
   if (fs.existsSync(SUBSCRIPTIONS_FILE)) {
     try {
       const raw = fs.readFileSync(SUBSCRIPTIONS_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        subscriptions = parsed;
-        loaded = true;
+        primarySubs = parsed;
       }
     } catch (err) {
-      console.error('Failed to parse primary subscriptions file:', err);
+      console.error('[Push Store] Error reading primary subscriptions:', err);
     }
   }
 
-  // If not loaded or empty, try fallback location
-  if (!loaded && fs.existsSync(FALLBACK_SUBSCRIPTIONS_FILE)) {
+  if (fs.existsSync(FALLBACK_SUBSCRIPTIONS_FILE)) {
     try {
       const raw = fs.readFileSync(FALLBACK_SUBSCRIPTIONS_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        subscriptions = parsed;
+        fallbackSubs = parsed;
       }
     } catch (err) {
-      console.error('Failed to parse fallback subscriptions file:', err);
+      console.error('[Push Store] Error reading fallback subscriptions:', err);
     }
   }
+
+  // Merge subscriptions cleanly without losing any registered endpoint
+  const mergedMap = new Map<string, StoredSubscription>();
+  for (const s of fallbackSubs) {
+    if (s && s.endpoint) mergedMap.set(s.endpoint, s);
+  }
+  for (const s of primarySubs) {
+    if (s && s.endpoint) mergedMap.set(s.endpoint, s);
+  }
+
+  subscriptions = Array.from(mergedMap.values());
+  console.log(
+    `[Push Store] Loaded ${subscriptions.length} persistent subscriptions (Primary: ${primarySubs.length}, Fallback: ${fallbackSubs.length})`
+  );
 }
 
 function saveSubscriptions(): boolean {
   let saved = false;
+  // Deduplicate by endpoint
+  const seen = new Set<string>();
+  const deduped: StoredSubscription[] = [];
+  for (const sub of subscriptions) {
+    if (sub && sub.endpoint && !seen.has(sub.endpoint)) {
+      seen.add(sub.endpoint);
+      deduped.push(sub);
+    }
+  }
+  subscriptions = deduped;
+
   const payload = JSON.stringify(subscriptions, null, 2);
 
-  // Attempt 1: primary file
+  // Attempt 1: primary file with atomic rename
   try {
-    fs.writeFileSync(SUBSCRIPTIONS_FILE, payload);
+    const tmp = `${SUBSCRIPTIONS_FILE}.tmp.${Date.now()}`;
+    fs.writeFileSync(tmp, payload, 'utf-8');
+    fs.renameSync(tmp, SUBSCRIPTIONS_FILE);
     saved = true;
   } catch (err) {
-    console.warn('Failed to save to primary subscriptions file, attempting fallback:', err);
+    console.warn('[Push Store] Primary atomic save failed, attempting direct write:', err);
+    try {
+      fs.writeFileSync(SUBSCRIPTIONS_FILE, payload, 'utf-8');
+      saved = true;
+    } catch (_e) {
+      // Continue to fallback
+    }
   }
 
-  // Attempt 2: fallback file in /tmp
+  // Attempt 2: fallback file in /tmp with atomic rename
   try {
-    fs.writeFileSync(FALLBACK_SUBSCRIPTIONS_FILE, payload);
+    const tmpFallback = `${FALLBACK_SUBSCRIPTIONS_FILE}.tmp.${Date.now()}`;
+    fs.writeFileSync(tmpFallback, payload, 'utf-8');
+    fs.renameSync(tmpFallback, FALLBACK_SUBSCRIPTIONS_FILE);
     saved = true;
   } catch (err) {
-    console.error('Failed to save to fallback subscriptions file:', err);
+    try {
+      fs.writeFileSync(FALLBACK_SUBSCRIPTIONS_FILE, payload, 'utf-8');
+      saved = true;
+    } catch (_e) {
+      // ignore
+    }
   }
 
   return saved;
@@ -228,13 +378,273 @@ function saveSubscriptions(): boolean {
 
 loadSubscriptions();
 
+// 3. Unified Push Notification Delivery Engine
+async function sendPushNotification(
+  sub: StoredSubscription,
+  notification: {
+    title: string;
+    body: string;
+    tag?: string;
+    url?: string;
+  }
+): Promise<{ success: boolean; error?: string; statusCode?: number }> {
+  // Guaranteed non-empty title and body (Prevents empty notification cards)
+  const finalTitle =
+    notification.title && typeof notification.title === 'string' && notification.title.trim().length > 0
+      ? notification.title.trim()
+      : 'أُنس - رفيقك للعبادة 🌙';
+
+  const finalBody =
+    notification.body && typeof notification.body === 'string' && notification.body.trim().length > 0
+      ? notification.body.trim()
+      : 'حان الآن موعد ذكر الله والصلاة 🤍.. تقبل الله طاعتكم';
+
+  const payload = JSON.stringify({
+    title: finalTitle,
+    body: finalBody,
+    icon: '/assets/icon-192.png',
+    badge: '/assets/badge-72.png',
+    tag: notification.tag || 'ouns-' + Date.now(),
+    data: {
+      url: notification.url || '/',
+      timestamp: Date.now(),
+    },
+  });
+
+  try {
+    const result = await webpush.sendNotification(
+      {
+        endpoint: sub.endpoint,
+        keys: sub.keys,
+      },
+      payload,
+      {
+        TTL: 24 * 60 * 60, // 24 hours so devices receive it upon reconnect
+        urgency: 'high',   // High priority to wake Android Doze mode
+      }
+    );
+
+    const deviceSnippet = sub.endpoint.substring(sub.endpoint.lastIndexOf('/') + 1, sub.endpoint.lastIndexOf('/') + 16) || sub.endpoint.substring(0, 20);
+    console.log(
+      `[Push Success] Delivered "${finalTitle}" to device ${deviceSnippet}... (Status: ${result.statusCode})`
+    );
+    return { success: true, statusCode: result.statusCode };
+  } catch (err: any) {
+    const statusCode = err?.statusCode || 500;
+    const msg = err?.message || 'Push delivery failed';
+    const deviceSnippet = sub.endpoint.substring(sub.endpoint.lastIndexOf('/') + 1, sub.endpoint.lastIndexOf('/') + 16) || sub.endpoint.substring(0, 20);
+    console.error(
+      `[Push Failed] Delivery failed to device ${deviceSnippet}... (Status: ${statusCode}, Reason: ${msg})`
+    );
+    return { success: false, error: msg, statusCode };
+  }
+}
+
+// 4. Background Scheduler Engine for Prayers & Athkar
+let lastSchedulerHeartbeat = 0;
+
+async function checkAndSendScheduledNotifications(): Promise<{
+  checkedDevices: number;
+  matchedCount: number;
+  sentCount: number;
+  failureCount: number;
+}> {
+  if (!subscriptions || subscriptions.length === 0) {
+    return { checkedDevices: 0, matchedCount: 0, sentCount: 0, failureCount: 0 };
+  }
+
+  const now = new Date();
+  const nowUtcMs = now.getTime();
+  const deadEndpoints: string[] = [];
+  let matchedCount = 0;
+  let sentCount = 0;
+  let failureCount = 0;
+  let stateModified = false;
+
+  // Periodic heartbeat log every 5 minutes
+  if (nowUtcMs - lastSchedulerHeartbeat >= 5 * 60 * 1000) {
+    lastSchedulerHeartbeat = nowUtcMs;
+    console.log(
+      `[Scheduler Heartbeat] Active devices: ${subscriptions.length} | Checked at: ${now.toISOString()}`
+    );
+  }
+
+  for (const sub of subscriptions) {
+    if (!sub || !sub.endpoint || !sub.keys) continue;
+
+    const userTz = sub.timezone || 'Africa/Cairo';
+    const local = getUserLocalDateParts(now, userTz);
+    const { year, month, day, hour, minute, dateStr } = local;
+    const currentLocalMinutes = hour * 60 + minute;
+
+    if (!sub.lastSentKeys) {
+      sub.lastSentKeys = {};
+      stateModified = true;
+    }
+
+    // Prune entries older than 7 days from lastSentKeys
+    const cutoffDate = new Date(nowUtcMs - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    for (const key of Object.keys(sub.lastSentKeys)) {
+      const parts = key.split('-');
+      const itemDate = parts.slice(-3).join('-');
+      if (itemDate && itemDate < cutoffDate) {
+        delete sub.lastSentKeys[key];
+        stateModified = true;
+      }
+    }
+
+    // A. Obligatory Prayer Times & Adhan Notifications
+    if (sub.preferences && sub.preferences.prayers !== false) {
+      const lat = sub.coordinates?.lat || 30.0444;
+      const lng = sub.coordinates?.lng || 31.2357;
+      try {
+        const prayerTimes = calculatePrayerTimes(year, month, day, lat, lng);
+        const prayerConfigs = [
+          { id: 'fajr', name: 'الفجر', date: prayerTimes.fajr },
+          { id: 'dhuhr', name: 'الظهر', date: prayerTimes.dhuhr },
+          { id: 'asr', name: 'العصر', date: prayerTimes.asr },
+          { id: 'maghrib', name: 'المغرب', date: prayerTimes.maghrib },
+          { id: 'isha', name: 'العشاء', date: prayerTimes.isha },
+        ];
+
+        for (const prayer of prayerConfigs) {
+          const prayerMs = prayer.date.getTime();
+          const diffMinutes = (nowUtcMs - prayerMs) / 60000;
+
+          // Safe trigger window: from the adhan time up to 25 minutes after
+          if (diffMinutes >= 0 && diffMinutes <= 25) {
+            const uniqueKey = `prayer-${prayer.id}-${dateStr}`;
+            if (!sub.lastSentKeys[uniqueKey]) {
+              matchedCount++;
+              const title = `🕌 أذان صلاة ${prayer.name}`;
+              const body = `«حي على الصلاة، حي على الفلاح».. حان الآن موعد أذان ${prayer.name}، تقبل الله طاعتكم 🤍`;
+              console.log(
+                `[Scheduler Trigger] Matched prayer ${prayer.name} for device (${sub.timezone}) at ${local.timeStr}`
+              );
+
+              const sendRes = await sendPushNotification(sub, {
+                title,
+                body,
+                tag: uniqueKey,
+                url: '/',
+              });
+
+              if (sendRes.success) {
+                sentCount++;
+                sub.lastSentKeys[uniqueKey] = new Date().toISOString();
+                sub.lastActive = nowUtcMs;
+                stateModified = true;
+              } else {
+                failureCount++;
+                if (sendRes.statusCode === 404 || sendRes.statusCode === 410) {
+                  deadEndpoints.push(sub.endpoint);
+                }
+              }
+            }
+          }
+        }
+      } catch (prayerErr) {
+        console.error('[Scheduler] Error calculating prayer times:', prayerErr);
+      }
+    }
+
+    // B. Scheduled Athkar & Custom Worship Reminders
+    const activeReminders =
+      sub.reminders && sub.reminders.length > 0
+        ? sub.reminders
+        : DEFAULT_SERVER_REMINDERS;
+
+    for (const rem of activeReminders) {
+      if (!rem || rem.enabled === false || rem.isPrayerTime) continue;
+
+      // Check category preferences
+      if (
+        (rem.id.includes('morning') ||
+          rem.id.includes('evening') ||
+          rem.id.includes('sleep') ||
+          rem.id.includes('adhkar')) &&
+        sub.preferences?.athkar === false
+      ) {
+        continue;
+      }
+
+      if (
+        (rem.id === 'rem-daily-worship' || rem.id.includes('task')) &&
+        sub.preferences?.tasks === false
+      ) {
+        continue;
+      }
+
+      // Parse reminder time (HH:mm)
+      const timeMatch = (rem.time || '').match(/^(\d{1,2}):(\d{2})$/);
+      if (!timeMatch) continue;
+
+      const remHour = parseInt(timeMatch[1], 10);
+      const remMin = parseInt(timeMatch[2], 10);
+      const reminderMinutes = remHour * 60 + remMin;
+      const diffMinutes = currentLocalMinutes - reminderMinutes;
+
+      // Safe trigger window: from scheduled time up to 25 minutes after
+      if (diffMinutes >= 0 && diffMinutes <= 25) {
+        const uniqueKey = `rem-${rem.id}-${dateStr}`;
+        if (!sub.lastSentKeys[uniqueKey]) {
+          matchedCount++;
+          const title = rem.title || 'أذكار وطاعات أُنس 🌙';
+          const body = rem.message || 'حان وقت ذكر الله وطاعته 🤍.. تقبل الله منكم صالح الأعمال';
+          console.log(
+            `[Scheduler Trigger] Matched reminder "${title}" (${rem.time}) for device (${sub.timezone}) at ${local.timeStr}`
+          );
+
+          const sendRes = await sendPushNotification(sub, {
+            title,
+            body,
+            tag: uniqueKey,
+            url: '/',
+          });
+
+          if (sendRes.success) {
+            sentCount++;
+            sub.lastSentKeys[uniqueKey] = new Date().toISOString();
+            sub.lastActive = nowUtcMs;
+            stateModified = true;
+          } else {
+            failureCount++;
+            if (sendRes.statusCode === 404 || sendRes.statusCode === 410) {
+              deadEndpoints.push(sub.endpoint);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Remove stale / unsubscribed endpoints
+  if (deadEndpoints.length > 0) {
+    const prevCount = subscriptions.length;
+    subscriptions = subscriptions.filter((s) => !deadEndpoints.includes(s.endpoint));
+    console.log(
+      `[Push Store] Cleaned up ${deadEndpoints.length} expired endpoints. Active devices: ${subscriptions.length} (was ${prevCount})`
+    );
+    saveSubscriptions();
+  } else if (stateModified) {
+    saveSubscriptions();
+  }
+
+  return {
+    checkedDevices: subscriptions.length,
+    matchedCount,
+    sentCount,
+    failureCount,
+  };
+}
+
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true, limit: '2mb' }));
   app.use(express.text({ limit: '2mb', type: ['text/*', 'application/json'] }));
 
-  // CORS and preflight headers for all environments (iframe, previews, dev, mobile)
+  // CORS and preflight headers for all environments (iframe, previews, mobile browsers)
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -249,16 +659,17 @@ async function startServer() {
     next();
   });
 
-  // Health check endpoint
+  // Health and scheduler status endpoints
   app.get(['/api/health', '/api/ping'], (_req: Request, res: Response) => {
     res.json({
       status: 'ok',
       pushEnabled: true,
       activeSubscriptions: subscriptions.length,
+      timestamp: new Date().toISOString(),
     });
   });
 
-  // 1. Get VAPID Public Key for client subscription (with all common aliases)
+  // 1. Get VAPID Public Key for client subscription (with aliases)
   const vapidRoutes = [
     '/api/push/vapid-public-key',
     '/api/push/public-key',
@@ -272,12 +683,8 @@ async function startServer() {
     });
   });
 
-  // Check / Verify if an endpoint is already registered and saved on the server
-  const checkRoutes = [
-    '/api/push/check',
-    '/api/check',
-    '/api/push/verify',
-  ];
+  // Verify if an endpoint is registered on the server
+  const checkRoutes = ['/api/push/check', '/api/check', '/api/push/verify'];
   app.post(checkRoutes, (req: Request, res: Response) => {
     const { endpoint } = req.body || {};
     if (!endpoint || typeof endpoint !== 'string') {
@@ -291,7 +698,7 @@ async function startServer() {
     });
   });
 
-  // 2. Subscribe endpoint (with all common aliases)
+  // 2. Subscribe endpoint (with aliases)
   const subscribeRoutes = [
     '/api/push/subscribe',
     '/api/subscribe',
@@ -316,6 +723,7 @@ async function startServer() {
 
       const subscription = body.subscription || body;
       const preferences = body.preferences;
+      const reminders = body.reminders;
       const coordinates = body.coordinates;
       const timezone = body.timezone;
 
@@ -357,10 +765,7 @@ async function startServer() {
         subscriptions = [];
       }
 
-      const existingIndex = subscriptions.findIndex(
-        (s) => s && s.endpoint === endpoint
-      );
-
+      const existingIndex = subscriptions.findIndex((s) => s && s.endpoint === endpoint);
       const now = Date.now();
       const storedItem: StoredSubscription = {
         endpoint,
@@ -369,13 +774,15 @@ async function startServer() {
           auth: String(auth),
         },
         preferences: defaultPreferences,
-        coordinates: coordinates && typeof coordinates.lat === 'number'
-          ? { lat: coordinates.lat, lng: coordinates.lng }
-          : { lat: 30.0444, lng: 31.2357 }, // Cairo default fallback
+        reminders: Array.isArray(reminders) && reminders.length > 0 ? reminders : (existingIndex >= 0 ? subscriptions[existingIndex].reminders : DEFAULT_SERVER_REMINDERS),
+        coordinates:
+          coordinates && typeof coordinates.lat === 'number'
+            ? { lat: coordinates.lat, lng: coordinates.lng }
+            : { lat: 30.0444, lng: 31.2357 },
         timezone: typeof timezone === 'string' && timezone.length > 0 ? timezone : 'Africa/Cairo',
-        createdAt: existingIndex >= 0 ? (subscriptions[existingIndex].createdAt || now) : now,
+        createdAt: existingIndex >= 0 ? subscriptions[existingIndex].createdAt || now : now,
         lastActive: now,
-        lastSentKeys: existingIndex >= 0 ? (subscriptions[existingIndex].lastSentKeys || {}) : {},
+        lastSentKeys: existingIndex >= 0 ? subscriptions[existingIndex].lastSentKeys || {} : {},
       };
 
       if (existingIndex >= 0) {
@@ -385,8 +792,9 @@ async function startServer() {
       }
 
       const savedOk = saveSubscriptions();
+      const deviceSnippet = endpoint.substring(endpoint.lastIndexOf('/') + 1, endpoint.lastIndexOf('/') + 16) || endpoint.substring(0, 20);
       console.log(
-        `[Push Server] Subscription registered successfully (Persisted: ${savedOk}). Total active devices: ${subscriptions.length}`
+        `[Push Register] Device subscribed: ${deviceSnippet}... (Timezone: ${storedItem.timezone}, Saved: ${savedOk}, Total Devices: ${subscriptions.length})`
       );
 
       res.status(200).json({
@@ -396,7 +804,7 @@ async function startServer() {
         totalSubscriptions: subscriptions.length,
       });
     } catch (serverErr: any) {
-      console.error('[Push Server Error in /api/push/subscribe]:', serverErr);
+      console.error('[Push Register Error]:', serverErr);
       res.status(500).json({
         error: 'حدث خطأ في الخادم أثناء معالجة وحفظ الاشتراك: ' + (serverErr?.message || 'خطأ غير معروف'),
       });
@@ -404,10 +812,7 @@ async function startServer() {
   });
 
   // 3. Unsubscribe endpoint (with aliases)
-  const unsubscribeRoutes = [
-    '/api/push/unsubscribe',
-    '/api/unsubscribe',
-  ];
+  const unsubscribeRoutes = ['/api/push/unsubscribe', '/api/unsubscribe'];
   app.post(unsubscribeRoutes, (req: Request, res: Response) => {
     try {
       const { endpoint } = req.body || {};
@@ -425,14 +830,11 @@ async function startServer() {
     }
   });
 
-  // 4. Update notification preferences (with aliases)
-  const preferencesRoutes = [
-    '/api/push/preferences',
-    '/api/preferences',
-  ];
+  // 4. Update notification preferences & reminders (with aliases)
+  const preferencesRoutes = ['/api/push/preferences', '/api/preferences'];
   app.post(preferencesRoutes, (req: Request, res: Response) => {
     try {
-      const { endpoint, preferences, coordinates } = req.body || {};
+      const { endpoint, preferences, reminders, coordinates } = req.body || {};
       if (!endpoint) {
         res.status(400).json({ error: 'Endpoint is required' });
         return;
@@ -441,6 +843,7 @@ async function startServer() {
       const sub = subscriptions.find((s) => s && s.endpoint === endpoint);
       if (sub) {
         if (preferences) sub.preferences = { ...sub.preferences, ...preferences };
+        if (Array.isArray(reminders)) sub.reminders = reminders;
         if (coordinates && typeof coordinates.lat === 'number') sub.coordinates = coordinates;
         sub.lastActive = Date.now();
         saveSubscriptions();
@@ -454,10 +857,7 @@ async function startServer() {
   });
 
   // 5. Send Real Instant Test Push Notification (with aliases)
-  const testRoutes = [
-    '/api/push/test',
-    '/api/test',
-  ];
+  const testRoutes = ['/api/push/test', '/api/test'];
   app.post(testRoutes, async (req: Request, res: Response) => {
     const { endpoint, title, body } = req.body;
 
@@ -465,7 +865,6 @@ async function startServer() {
       ? subscriptions.filter((s) => s.endpoint === endpoint)
       : subscriptions;
 
-    // Fallback: If specific endpoint was not matched but we have registered subscriptions, target the newest subscription
     if (targets.length === 0 && subscriptions.length > 0) {
       targets = [subscriptions[subscriptions.length - 1]];
     }
@@ -477,261 +876,103 @@ async function startServer() {
       return;
     }
 
-    const payload = JSON.stringify({
-      title: title || 'أُنس - تجربة الإشعار 🌙',
-      body:
-        body ||
-        'مرحباً بك! إشعارات أُنس تعمل الآن بنجاح على هاتفك حتى عند إغلاق المتصفح أو قفل الشاشة 🤍',
-      icon: '/assets/icon-192.png',
-      badge: '/assets/badge-72.png',
-      tag: 'ouns-test-' + Date.now(),
-      data: {
-        url: '/',
-        timestamp: Date.now(),
-      },
-    });
-
     let delivered = 0;
     const deadEndpoints: string[] = [];
     let lastError: string | null = null;
 
-    await Promise.all(
-      targets.map(async (sub) => {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: sub.keys,
-            },
-            payload,
-            {
-              TTL: 60 * 60, // 1 hour TTL
-              urgency: 'high', // Wake Android immediately
-            }
-          );
-          delivered++;
-          console.log(`[Push Success] Delivered test notification to ${sub.endpoint.substring(0, 45)}...`);
-        } catch (error: any) {
-          console.error(
-            `[Push Error] Failed to send to ${sub.endpoint.substring(0, 45)}:`,
-            error?.statusCode || error?.message
-          );
-          lastError = error?.message || 'Push service rejected notification';
-          // If subscription has expired or unsubscribed on Android/FCM (410 Gone / 404 Not Found)
-          if (error?.statusCode === 410 || error?.statusCode === 404) {
-            deadEndpoints.push(sub.endpoint);
-          }
+    for (const sub of targets) {
+      const result = await sendPushNotification(sub, {
+        title: title || 'أُنس - تجربة الإشعار 🌙',
+        body:
+          body ||
+          'مرحباً بك! إشعارات أُنس تعمل الآن بنجاح على هاتفك حتى عند إغلاق المتصفح أو قفل الشاشة 🤍',
+        tag: 'ouns-test-' + Date.now(),
+        url: '/',
+      });
+
+      if (result.success) {
+        delivered++;
+      } else {
+        lastError = result.error || 'فشل إرسال الإشعار';
+        if (result.statusCode === 404 || result.statusCode === 410) {
+          deadEndpoints.push(sub.endpoint);
         }
-      })
-    );
+      }
+    }
 
     if (deadEndpoints.length > 0) {
       subscriptions = subscriptions.filter((s) => !deadEndpoints.includes(s.endpoint));
       saveSubscriptions();
     }
 
-    if (delivered === 0) {
+    if (delivered > 0) {
+      res.json({
+        success: true,
+        message: `تم إرسال الإشعار التجريبي بنجاح إلى هاتفك (${delivered} جهاز)`,
+        delivered,
+      });
+    } else {
       res.status(500).json({
         success: false,
-        error: 'تعذر تسليم الإشعار إلى جهازك. يرجى التأكد من تفعيل الإشعارات.',
+        error: `تعذر تسليم الإشعار التجريبي إلى الجهاز: ${lastError}`,
       });
-      return;
     }
-
-    res.json({
-      success: true,
-      delivered,
-      totalTargets: targets.length,
-      message: 'تم إرسال الإشعار بنجاح إلى هاتفك 📲',
-    });
   });
 
-  // 6. Push status check
-  app.get('/api/push/status', (_req: Request, res: Response) => {
-    res.json({
-      configured: true,
-      hasVapidKeys: Boolean(vapidPublicKey && vapidPrivateKey),
-      publicKeyPreview: vapidPublicKey.substring(0, 12) + '...',
-      activeDevices: subscriptions.length,
-    });
-  });
-
-  // --- Background Scheduler for Islamic Reminders & Prayers ---
-  // Runs every 30 seconds to check prayer/athkar events and wake device
-  setInterval(async () => {
-    if (subscriptions.length === 0) return;
-
-    const now = new Date();
-    const nowUtcMs = now.getTime();
-    const deadEndpoints: string[] = [];
-
-    for (const sub of subscriptions) {
-      const userTz = sub.timezone || 'Africa/Cairo';
-      let localTimeStr = '12:00';
-      let dateStr = now.toISOString().slice(0, 10);
-      try {
-        const parts = new Intl.DateTimeFormat('en-US', {
-          timeZone: userTz,
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }).formatToParts(now);
-
-        const h = parts.find((p) => p.type === 'hour')?.value || '00';
-        const m = parts.find((p) => p.type === 'minute')?.value || '00';
-        const yr = parts.find((p) => p.type === 'year')?.value || '2026';
-        const mo = parts.find((p) => p.type === 'month')?.value || '01';
-        const dy = parts.find((p) => p.type === 'day')?.value || '01';
-        localTimeStr = `${h}:${m}`;
-        dateStr = `${yr}-${mo}-${dy}`;
-      } catch {
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        localTimeStr = `${hours}:${minutes}`;
-      }
-
-      if (!sub.lastSentKeys) sub.lastSentKeys = {};
-
-      // 1. Check Obligatory Prayers & Adhan
-      if (sub.preferences && sub.preferences.prayers) {
-        const lat = sub.coordinates?.lat || 30.0444;
-        const lng = sub.coordinates?.lng || 31.2357;
-        try {
-          const prayerTimes = calculatePrayerTimes(now, lat, lng);
-          const prayerConfigs = [
-            { id: 'fajr', name: 'الفجر', date: prayerTimes.fajr },
-            { id: 'dhuhr', name: 'الظهر', date: prayerTimes.dhuhr },
-            { id: 'asr', name: 'العصر', date: prayerTimes.asr },
-            { id: 'maghrib', name: 'المغرب', date: prayerTimes.maghrib },
-            { id: 'isha', name: 'العشاء', date: prayerTimes.isha },
-          ];
-
-          for (const prayer of prayerConfigs) {
-            const diffMs = Math.abs(nowUtcMs - prayer.date.getTime());
-            // Trigger if within a 90 second window
-            if (diffMs <= 90 * 1000) {
-              const uniqueKey = `prayer-${prayer.id}-${dateStr}`;
-              if (!sub.lastSentKeys[uniqueKey]) {
-                const title = `🕌 أذان صلاة ${prayer.name}`;
-                const body = `«حي على الصلاة، حي على الفلاح».. حان الآن موعد صلاة ${prayer.name}، تقبل الله طاعتكم 🤍`;
-                await sendPushToSubscription(sub, uniqueKey, title, body, deadEndpoints);
-              }
-            }
-          }
-        } catch (calcErr) {
-          console.error('[Push] Prayer calculation error:', calcErr);
-        }
-      }
-
-      // 2. Morning Athkar at 06:30
-      if (sub.preferences && sub.preferences.athkar && localTimeStr === '06:30') {
-        const key = `athkar-morning-${dateStr}`;
-        if (!sub.lastSentKeys[key]) {
-          await sendPushToSubscription(
-            sub,
-            key,
-            'أذكار الصباح ☀️',
-            '«أصبحنا وأصبح الملك لله والحمد لله».. ابدأ يومك بذكر الله وحصنه الحصين 🌿',
-            deadEndpoints
-          );
-        }
-      }
-
-      // 3. Evening Athkar at 17:00
-      if (sub.preferences && sub.preferences.athkar && localTimeStr === '17:00') {
-        const key = `athkar-evening-${dateStr}`;
-        if (!sub.lastSentKeys[key]) {
-          await sendPushToSubscription(
-            sub,
-            key,
-            'أذكار المساء 🌙',
-            '«أمسينا وأمسى الملك لله».. حان وقت أذكار المساء وسكينة القلب 🤍',
-            deadEndpoints
-          );
-        }
-      }
-
-      // 4. Daily Tasks & Evening Reminder at 20:30
-      if (sub.preferences && sub.preferences.tasks && localTimeStr === '20:30') {
-        const key = `tasks-reminder-${dateStr}`;
-        if (!sub.lastSentKeys[key]) {
-          await sendPushToSubscription(
-            sub,
-            key,
-            'تذكير مهام وطاعات اليوم 📝',
-            'هل أتممت طاعاتك ومهامك لليوم مع أُنس؟ تفقد قائمة مهامك وأكمل يومك برضا 🌿',
-            deadEndpoints
-          );
-        }
-      }
-
-      // 5. Sleep Athkar at 22:30
-      if (sub.preferences && sub.preferences.athkar && localTimeStr === '22:30') {
-        const key = `athkar-sleep-${dateStr}`;
-        if (!sub.lastSentKeys[key]) {
-          await sendPushToSubscription(
-            sub,
-            key,
-            'أذكار النوم وسنن الليل 🌙',
-            'اقترب وقت النوم، هل قرأت أذكارك؟.. ليلة هانئة في حفظ الله ورعايته 🤍',
-            deadEndpoints
-          );
-        }
-      }
-    }
-
-    if (deadEndpoints.length > 0) {
-      subscriptions = subscriptions.filter((s) => !deadEndpoints.includes(s.endpoint));
-      saveSubscriptions();
-    } else {
-      saveSubscriptions();
-    }
-  }, 30 * 1000);
-
-  async function sendPushToSubscription(
-    sub: StoredSubscription,
-    uniqueKey: string,
-    title: string,
-    body: string,
-    deadList: string[]
-  ) {
+  // 6. Manual trigger and diagnostics for background scheduler
+  app.post('/api/push/scheduler/run', async (_req: Request, res: Response) => {
     try {
-      await webpush.sendNotification(
-        {
-          endpoint: sub.endpoint,
-          keys: sub.keys,
-        },
-        JSON.stringify({
-          title,
-          body,
-          icon: '/assets/icon-192.png',
-          badge: '/assets/badge-72.png',
-          tag: uniqueKey,
-          data: { url: '/', timestamp: Date.now() },
-        }),
-        {
-          TTL: 60 * 60,
-          urgency: 'high',
-        }
-      );
-
-      if (!sub.lastSentKeys) sub.lastSentKeys = {};
-      sub.lastSentKeys[uniqueKey] = 'sent';
-      console.log(`[Push Success] Sent ${uniqueKey} to ${sub.endpoint.substring(0, 30)}...`);
+      const result = await checkAndSendScheduledNotifications();
+      res.json({
+        success: true,
+        report: result,
+        timestamp: new Date().toISOString(),
+      });
     } catch (err: any) {
-      console.error(`[Push Fail] ${uniqueKey}:`, err?.statusCode || err?.message);
-      if (
-        err?.statusCode === 410 ||
-        err?.statusCode === 404 ||
-        (typeof err?.message === 'string' && (err.message.includes('key') || err.message.includes('p256dh') || err.message.includes('auth')))
-      ) {
-        deadList.push(sub.endpoint);
-      }
+      res.status(500).json({ success: false, error: err?.message || 'Error running scheduler' });
     }
-  }
+  });
+
+  app.get('/api/push/scheduler/status', (_req: Request, res: Response) => {
+    const now = new Date();
+    const overview = subscriptions.map((s) => {
+      const local = getUserLocalDateParts(now, s.timezone || 'Africa/Cairo');
+      return {
+        endpoint: s.endpoint.substring(0, 30) + '...',
+        timezone: s.timezone || 'Africa/Cairo',
+        userLocalTime: local.timeStr,
+        userLocalDate: local.dateStr,
+        prayersEnabled: s.preferences?.prayers ?? true,
+        athkarEnabled: s.preferences?.athkar ?? true,
+        remindersCount: s.reminders?.length || DEFAULT_SERVER_REMINDERS.length,
+        sentKeysToday: Object.keys(s.lastSentKeys || {}).filter((k) => k.endsWith(local.dateStr)),
+      };
+    });
+
+    res.json({
+      totalDevices: subscriptions.length,
+      currentServerTimeUtc: now.toISOString(),
+      devices: overview,
+    });
+  });
+
+  // Start Background Scheduler Loop (runs every 25 seconds)
+  setInterval(async () => {
+    try {
+      await checkAndSendScheduledNotifications();
+    } catch (schedErr) {
+      console.error('[Scheduler Error]:', schedErr);
+    }
+  }, 25 * 1000);
+
+  // Initial trigger 5 seconds after boot to catch any due events
+  setTimeout(async () => {
+    try {
+      await checkAndSendScheduledNotifications();
+    } catch (e) {
+      console.warn('[Initial Scheduler Check Error]:', e);
+    }
+  }, 5000);
 
   // Vite middleware setup (per framework instructions)
   if (process.env.NODE_ENV !== 'production') {

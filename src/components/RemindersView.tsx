@@ -174,7 +174,8 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
 
       const result = await subscribeToWebPush(
         preferences,
-        coordinates || undefined
+        coordinates || undefined,
+        reminders
       );
 
       if (result.success) {
@@ -350,8 +351,9 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
         tasks: updated.some((r) => r.id === 'rem-daily-worship' && r.enabled),
         occasions: true,
       },
-      coordinates || undefined
-    );
+      coordinates || undefined,
+      updated
+    ).catch(() => {});
   };
 
   // Change individual reminder time
@@ -363,6 +365,24 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
       return r;
     });
     onUpdateReminders(updated);
+    if (isSubscribed || isServerSaved) {
+      updatePushPreferencesOnServer(
+        {
+          prayers: updated.some((r) => r.isPrayerTime && r.enabled),
+          athkar: updated.some(
+            (r) =>
+              (r.id.includes('morning') ||
+                r.id.includes('evening') ||
+                r.id.includes('sleep')) &&
+              r.enabled
+          ),
+          tasks: updated.some((r) => r.id === 'rem-daily-worship' && r.enabled),
+          occasions: true,
+        },
+        coordinates || undefined,
+        updated
+      ).catch(() => {});
+    }
   };
 
   // Toggle autoplay adhan

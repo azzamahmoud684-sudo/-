@@ -3,6 +3,9 @@
  * Integrates with W3C Push API, Service Worker, and Ouns Backend
  */
 
+import { loadReminders } from './storage';
+import type { ReminderSetting } from '../types';
+
 export interface PushPreferences {
   prayers: boolean;
   athkar: boolean;
@@ -228,7 +231,8 @@ export function extractSubscriptionPayload(subscription: PushSubscription): {
  */
 export async function subscribeToWebPush(
   preferences: PushPreferences = loadSavedPreferences(),
-  coordinates?: { lat: number; lng: number }
+  coordinates?: { lat: number; lng: number },
+  customReminders?: ReminderSetting[]
 ): Promise<{ success: boolean; error?: string; subscription?: PushSubscription }> {
   if (!isPushSupported()) {
     return {
@@ -327,9 +331,11 @@ export async function subscribeToWebPush(
     let resData: any = {};
     let lastStatus = 0;
 
+    const savedReminders = customReminders || loadReminders();
     const requestBody = JSON.stringify({
       subscription: payload,
       preferences,
+      reminders: savedReminders,
       coordinates,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Cairo',
     });
@@ -505,25 +511,6 @@ export async function sendTestPushNotification(
       }
     }
 
-    // Instant local notification feedback via service worker registration
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && Notification.permission === 'granted') {
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        reg.showNotification(customTitle || 'أُنس - تجربة إشعار الأذان 🕌', {
-          body: customBody || 'إشعارات أُنس والأذان مفعلة بنجاح وتصلك حتى عند إغلاق التطبيق وقفل الشاشة 🤍',
-          icon: '/assets/icon-192.png',
-          badge: '/assets/badge-72.png',
-          vibrate: [200, 100, 200, 100, 300],
-          tag: 'test-direct-' + Date.now(),
-          renotify: true,
-          requireInteraction: false,
-          data: { url: '/' },
-        } as any).catch(() => {});
-      } catch {
-        // Continue to server push
-      }
-    }
-
     if (!subscription) {
       return {
         success: false,
@@ -569,17 +556,19 @@ export async function sendTestPushNotification(
 }
 
 /**
- * Updates preferences on the backend for this device
+ * Updates preferences and scheduled reminders on the backend for this device
  */
 export async function updatePushPreferencesOnServer(
   preferences: PushPreferences,
-  coordinates?: { lat: number; lng: number }
+  coordinates?: { lat: number; lng: number },
+  customReminders?: ReminderSetting[]
 ): Promise<boolean> {
   savePreferencesLocally(preferences);
   try {
     const sub = await getCurrentPushSubscription();
     if (!sub) return false;
 
+    const savedReminders = customReminders || loadReminders();
     const prefEndpoints = ['/api/push/preferences', '/api/preferences'];
     for (const ep of prefEndpoints) {
       try {
@@ -590,6 +579,7 @@ export async function updatePushPreferencesOnServer(
           body: JSON.stringify({
             endpoint: sub.endpoint,
             preferences,
+            reminders: savedReminders,
             coordinates,
           }),
         });
