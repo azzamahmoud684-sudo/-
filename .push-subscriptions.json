@@ -126,27 +126,6 @@
     "lastSentKeys": {}
   },
   {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/cZLcQAoD56I:APA91bFQBcS9FJUYpjC3Phl5D6e1weMzhd9VSHN1-4w5oZ81dVAL99CynKw27zqEtvhT6_N6L2_4j5i15I-7vS3-sATngzFg6m4RaQ1NPJ9D1ryyaR_GkGj-MhX_PuxXBW-DrEzEs9d_",
-    "keys": {
-      "p256dh": "BEahzmHClTfIyc50bPXU0PeQoBkaOvmxaPzeO1oEhmuL1R_FVZ0HzsS4ro0EWjGfOHJPIc5kwTlBvWs2-QbMNWo",
-      "auth": "DsENdikj9euBY0RL9ev9kg"
-    },
-    "preferences": {
-      "prayers": true,
-      "athkar": true,
-      "tasks": false,
-      "occasions": true
-    },
-    "coordinates": {
-      "lat": 30.0444,
-      "lng": 31.2357
-    },
-    "timezone": "Africa/Cairo",
-    "createdAt": 1789741410305,
-    "lastActive": 1789742307248,
-    "lastSentKeys": {}
-  },
-  {
     "endpoint": "https://fcm.googleapis.com/fcm/send/test-endpoint-123",
     "keys": {
       "p256dh": "BG88411...",
@@ -207,6 +186,79 @@
     "timezone": "Africa/Cairo",
     "createdAt": 1789742889963,
     "lastActive": 1789742889963,
+    "lastSentKeys": {}
+  },
+  {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/test-nonexistent",
+    "keys": {
+      "p256dh": "BM123",
+      "auth": "auth123"
+    },
+    "preferences": {
+      "prayers": true,
+      "athkar": true,
+      "tasks": true,
+      "occasions": true
+    },
+    "reminders": [
+      {
+        "id": "rem-prayer",
+        "title": "تنبيهات الصلوات الخمس",
+        "enabled": true,
+        "time": "حسب مواقيت الأذان",
+        "message": "حان وقت الصلاة 🤍.. استرح بها وأقبل على ربك بسكينة",
+        "isPrayerTime": true
+      },
+      {
+        "id": "rem-morning-adhkar",
+        "title": "أذكار الصباح ☀️",
+        "enabled": true,
+        "time": "06:30",
+        "message": "حان وقت أذكار الصباح 🌿.. ابدأ يومك بنور الذكر وحفظ الله"
+      },
+      {
+        "id": "rem-quran",
+        "title": "ورد القرآن الكريم 📖",
+        "enabled": true,
+        "time": "13:30",
+        "message": "لا تنسَ وردك من القرآن اليوم 📖.. آيات تطيب بها الروح والقلب"
+      },
+      {
+        "id": "rem-daily-worship",
+        "title": "عبادة اليوم الموصى بها 🌿",
+        "enabled": false,
+        "time": "16:30",
+        "message": "اجعل ليومك أثراً طيباً 🌿.. تفقد عبادة اليوم المقترحة في أُنس"
+      },
+      {
+        "id": "rem-evening-adhkar",
+        "title": "أذكار المساء 🌅",
+        "enabled": true,
+        "time": "17:30",
+        "message": "حان وقت أذكار المساء 🌅.. استودع يومك عند الله بحصن الذكر"
+      },
+      {
+        "id": "rem-sleep-adhkar",
+        "title": "أذكار النوم وسنن الليل 🌙",
+        "enabled": true,
+        "time": "22:30",
+        "message": "اقترب وقت النوم، هل قرأت أذكارك؟ 🌙.. ليلة هانئة في حفظ الرحمن"
+      },
+      {
+        "id": "rem-witr",
+        "title": "صلاة الوتر 🤍",
+        "enabled": true,
+        "time": "23:00",
+        "message": "ركعة تضيء ظلمة الليل 🤍.. لا تحرم نفسك أجر الوتر ولو بركعة"
+      }
+    ],
+    "coordinates": {
+      "lat": 30.0444,
+      "lng": 31.2357
+    },
+    "timezone": "Africa/Cairo",
+    "createdAt": 1790042353373,
+    "lastActive": 1790042353373,
     "lastSentKeys": {}
   }
 ]

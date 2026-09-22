@@ -277,38 +277,21 @@ export async function subscribeToWebPush(
     // 4. Decode key to Uint8Array
     const applicationServerKey = urlBase64ToUint8Array(publicKey);
 
-    // 5. Check if subscription already exists.
-    let subscription = await registration.pushManager.getSubscription();
-    if (subscription) {
-      const existingKeyRaw = subscription.options?.applicationServerKey;
-      let isMismatch = false;
-      if (existingKeyRaw) {
-        const existingKeyBytes = new Uint8Array(existingKeyRaw);
-        if (
-          existingKeyBytes.length !== applicationServerKey.length ||
-          !existingKeyBytes.every((b, i) => b === applicationServerKey[i])
-        ) {
-          isMismatch = true;
-        }
-      }
-
-      if (isMismatch) {
-        console.log('[Push] Unsubscribing mismatched push subscription...');
-        try {
-          await subscription.unsubscribe();
-        } catch (e) {
-          console.warn('[Push] Error unsubscribing stale subscription:', e);
-        }
-        subscription = null;
+    // 5. Always ensure a fresh, active FCM subscription
+    const existingSub = await registration.pushManager.getSubscription();
+    if (existingSub) {
+      console.log('[Push] Refreshing push subscription with fresh FCM token...');
+      try {
+        await existingSub.unsubscribe();
+      } catch (e) {
+        console.warn('[Push] Error clearing old subscription:', e);
       }
     }
 
-    if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey,
-      });
-    }
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey,
+    });
 
     // 6. Extract payload with guaranteed keys
     const payload = extractSubscriptionPayload(subscription);
@@ -518,10 +501,13 @@ export async function sendTestPushNotification(
       };
     }
 
-    const endpoint = subscription.endpoint;
+    let currentSub = subscription;
+    let endpoint = currentSub.endpoint;
+    let payload = extractSubscriptionPayload(currentSub);
 
     const testEndpoints = ['/api/push/test', '/api/test'];
     let lastErr = 'تعذر إرسال الإشعار التجريبي';
+    let needsRetryWithFreshSub = false;
 
     for (const ep of testEndpoints) {
       try {
@@ -531,6 +517,7 @@ export async function sendTestPushNotification(
           credentials: 'same-origin',
           body: JSON.stringify({
             endpoint,
+            subscription: payload,
             title: customTitle || 'أُنس - تجربة إشعار الأذان والهاتف 🕌',
             body:
               customBody ||
@@ -540,12 +527,51 @@ export async function sendTestPushNotification(
 
         if (res.status === 404) continue;
         const data = await res.json().catch(() => ({}));
+
+        if (res.status === 410 || data?.expired) {
+          needsRetryWithFreshSub = true;
+          break;
+        }
+
         if (res.ok && data.success) {
           return { success: true, delivered: data.delivered, message: data.message };
         }
         lastErr = data.error || lastErr;
       } catch (err: any) {
         lastErr = err.message || lastErr;
+      }
+    }
+
+    // Auto-heal: If FCM returned 410 (expired), re-subscribe with fresh token and retry once
+    if (needsRetryWithFreshSub) {
+      console.log('[Push Auto-Heal] Subscription expired on FCM, renewing subscription...');
+      const reSub = await subscribeToWebPush();
+      if (reSub.success && reSub.subscription) {
+        const freshPayload = extractSubscriptionPayload(reSub.subscription);
+        for (const ep of testEndpoints) {
+          try {
+            const retryRes = await fetch(ep, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({
+                endpoint: reSub.subscription.endpoint,
+                subscription: freshPayload,
+                title: customTitle || 'أُنس - تجربة إشعار الأذان والهاتف 🕌',
+                body:
+                  customBody ||
+                  'ما شاء الله! تم تجديد اشتراك الإشعارات وتعمل الآن بنجاح على هاتفك 🤍',
+              }),
+            });
+            if (retryRes.status === 404) continue;
+            const retryData = await retryRes.json().catch(() => ({}));
+            if (retryRes.ok && retryData.success) {
+              return { success: true, delivered: retryData.delivered, message: retryData.message };
+            }
+          } catch {
+            // continue
+          }
+        }
       }
     }
 

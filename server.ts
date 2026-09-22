@@ -859,11 +859,35 @@ async function startServer() {
   // 5. Send Real Instant Test Push Notification (with aliases)
   const testRoutes = ['/api/push/test', '/api/test'];
   app.post(testRoutes, async (req: Request, res: Response) => {
-    const { endpoint, title, body } = req.body;
+    const { endpoint, subscription, title, body } = req.body || {};
 
     let targets = endpoint
       ? subscriptions.filter((s) => s.endpoint === endpoint)
       : subscriptions;
+
+    // If endpoint not in stored list, but client provided subscription keys, use it directly!
+    if (targets.length === 0 && (subscription?.endpoint || endpoint)) {
+      const ep = subscription?.endpoint || endpoint;
+      const p256dh = subscription?.keys?.p256dh || req.body?.keys?.p256dh;
+      const auth = subscription?.keys?.auth || req.body?.keys?.auth;
+      if (ep && p256dh && auth) {
+        const adhocSub: StoredSubscription = {
+          endpoint: ep,
+          keys: { p256dh: String(p256dh), auth: String(auth) },
+          preferences: { prayers: true, athkar: true, tasks: true, occasions: true },
+          reminders: DEFAULT_SERVER_REMINDERS,
+          coordinates: { lat: 30.0444, lng: 31.2357 },
+          timezone: 'Africa/Cairo',
+          createdAt: Date.now(),
+          lastActive: Date.now(),
+          lastSentKeys: {},
+        };
+        // Auto-save so future scheduled pushes reach it too
+        subscriptions.push(adhocSub);
+        saveSubscriptions();
+        targets = [adhocSub];
+      }
+    }
 
     if (targets.length === 0 && subscriptions.length > 0) {
       targets = [subscriptions[subscriptions.length - 1]];
@@ -879,6 +903,7 @@ async function startServer() {
     let delivered = 0;
     const deadEndpoints: string[] = [];
     let lastError: string | null = null;
+    let hadExpired = false;
 
     for (const sub of targets) {
       const result = await sendPushNotification(sub, {
@@ -896,6 +921,7 @@ async function startServer() {
         lastError = result.error || 'فشل إرسال الإشعار';
         if (result.statusCode === 404 || result.statusCode === 410) {
           deadEndpoints.push(sub.endpoint);
+          hadExpired = true;
         }
       }
     }
@@ -912,9 +938,13 @@ async function startServer() {
         delivered,
       });
     } else {
-      res.status(500).json({
+      const statusCode = hadExpired ? 410 : 500;
+      res.status(statusCode).json({
         success: false,
-        error: `تعذر تسليم الإشعار التجريبي إلى الجهاز: ${lastError}`,
+        expired: hadExpired,
+        error: hadExpired
+          ? 'انتهت صلاحية اشتراك الجهاز لدى خادم الإشعارات (FCM)، جارٍ التجديد التلقائي...'
+          : `تعذر تسليم الإشعار التجريبي إلى الجهاز: ${lastError}`,
       });
     }
   });

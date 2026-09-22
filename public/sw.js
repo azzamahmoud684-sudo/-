@@ -97,6 +97,33 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// Handle subscription renewal when browser/FCM expires it
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const options = event.oldSubscription ? event.oldSubscription.options : { userVisibleOnly: true };
+        const newSub = await self.registration.pushManager.subscribe(options);
+        const subData = {
+          endpoint: newSub.endpoint,
+          keys: {
+            p256dh: newSub.getKey ? btoa(String.fromCharCode.apply(null, new Uint8Array(newSub.getKey('p256dh')))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '',
+            auth: newSub.getKey ? btoa(String.fromCharCode.apply(null, new Uint8Array(newSub.getKey('auth')))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '',
+          },
+        };
+        await fetch('/api/push/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: subData }),
+        });
+        console.log('[SW] Successfully renewed subscription after pushsubscriptionchange');
+      } catch (err) {
+        console.error('[SW] Failed to renew subscription:', err);
+      }
+    })()
+  );
+});
+
 // Handle user clicking on the notification on their phone
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
