@@ -1,198 +1,9 @@
 [
   {
-    "endpoint": "https://example.com/test",
+    "endpoint": "https://fcm.googleapis.com/fcm/send/fC0DX0B2W2c:APA91bHOGXOYla5oELK6Gr3U09zvpavYwijbidHzpdaYzzHovG52MkuQxHD7XuWTkMKK6AC91GCApbOdH8wy1odc1pImrjGiLRGL5rCSh0sQhUiDUUCF_if80rzsqAOJsNRVpLg6Nk5C",
     "keys": {
-      "p256dh": "abc",
-      "auth": "123"
-    },
-    "preferences": {
-      "prayers": true,
-      "athkar": true,
-      "tasks": true,
-      "occasions": true
-    },
-    "coordinates": {
-      "lat": 30.0444,
-      "lng": 31.2357
-    },
-    "timezone": "Africa/Cairo",
-    "createdAt": 1789740635365,
-    "lastActive": 1789740635365,
-    "lastSentKeys": {}
-  },
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/fake123",
-    "keys": {
-      "p256dh": "BM4-NW2y-q3hzdOXHkrXOpP826Csd7hqbyvnKlAQdLmyDmuaEhMufSMpdPHl8b96rPjRzo-wUB2Psh3C-ex-ukY",
-      "auth": "wJRkoZAeZL049ztVUtTclM"
-    },
-    "preferences": {
-      "prayers": true,
-      "athkar": true,
-      "tasks": true,
-      "occasions": true
-    },
-    "coordinates": {
-      "lat": 30.0444,
-      "lng": 31.2357
-    },
-    "timezone": "Africa/Cairo",
-    "createdAt": 1789740755347,
-    "lastActive": 1789740755347,
-    "lastSentKeys": {}
-  },
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/testphone",
-    "keys": {
-      "p256dh": "BM4-NW2y-q3hzdOXHkrXOpP826Csd7hqbyvnKlAQdLmyDmuaEhMufSMpdPHl8b96rPjRzo-wUB2Psh3C-ex-ukY",
-      "auth": "wJRkoZAeZL049ztVUtTclM"
-    },
-    "preferences": {
-      "prayers": true,
-      "athkar": true,
-      "tasks": true,
-      "occasions": true
-    },
-    "coordinates": {
-      "lat": 30.0444,
-      "lng": 31.2357
-    },
-    "timezone": "Africa/Cairo",
-    "createdAt": 1789740772441,
-    "lastActive": 1789740772441,
-    "lastSentKeys": {}
-  },
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/real-phone-token-xyz",
-    "keys": {
-      "p256dh": "BM4-NW2y-q3hzdOXHkrXOpP826Csd7hqbyvnKlAQdLmyDmuaEhMufSMpdPHl8b96rPjRzo-wUB2Psh3C-ex-ukY",
-      "auth": "wJRkoZAeZL049ztVUtTclM"
-    },
-    "preferences": {
-      "prayers": true,
-      "athkar": true,
-      "tasks": true,
-      "occasions": true
-    },
-    "coordinates": {
-      "lat": 30.0444,
-      "lng": 31.2357
-    },
-    "timezone": "Africa/Cairo",
-    "createdAt": 1789740898113,
-    "lastActive": 1789740898113,
-    "lastSentKeys": {}
-  },
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/eduV6Nd0DM4:APA91bGnG9lMMA8COdsqZCWr39oZMT6qumub62hOkYIiIn0LhamVtpwaRgEbwNOnDvMugLrjS0VKexc99JfSjK7KC4KmeFFsn6FEl_4VJlGlzmMRFJ-xoGvUcPnwNiJI98flFet1y6gQ",
-    "keys": {
-      "p256dh": "BA_Zb6ynV9A2R8ptFHKNJH4faLTmVZeE3CNu7jRsGS7bRhhl87hRdueLB8YI3uqFijtKxnAGq6K0cNWw9cKUQIo",
-      "auth": "BYCQJl8VOObRml5jD4m_EA"
-    },
-    "preferences": {
-      "prayers": true,
-      "athkar": true,
-      "tasks": false,
-      "occasions": true
-    },
-    "coordinates": {
-      "lat": 30.0444,
-      "lng": 31.2357
-    },
-    "timezone": "Africa/Cairo",
-    "createdAt": 1789741370792,
-    "lastActive": 1789741370792,
-    "lastSentKeys": {}
-  },
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/eeK_kPc3g1s:APA91bFEN_QLzXd_Qwws71_T0QsEY5w6_m_Pcmc3MGgc7v-HM-u--zbx1JATIFKv2z_WANVw4kgpAPQf1lLBp1Vn8a-TKamKgB4UKf9pFva9SOwymmzX098N9Yp7uhx_uxjJOzsjNjYd",
-    "keys": {
-      "p256dh": "BAJmThdl8dmVuRnZi5fYIly-h7LZi86bjJiKf1q_RFauNJcoNXdpc4UMJnCArLjks-GRaXHynSZi4hpFXU7SakU",
-      "auth": "LDv4P-1XVH7vkfIP9j_YdQ"
-    },
-    "preferences": {
-      "prayers": true,
-      "athkar": true,
-      "tasks": false,
-      "occasions": true
-    },
-    "coordinates": {
-      "lat": 30.0444,
-      "lng": 31.2357
-    },
-    "timezone": "Africa/Cairo",
-    "createdAt": 1789741409984,
-    "lastActive": 1789741409984,
-    "lastSentKeys": {}
-  },
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/test-endpoint-123",
-    "keys": {
-      "p256dh": "BG88411...",
-      "auth": "ABC..."
-    },
-    "preferences": {
-      "prayers": true,
-      "athkar": true,
-      "tasks": true,
-      "occasions": true
-    },
-    "coordinates": {
-      "lat": 30.0444,
-      "lng": 31.2357
-    },
-    "timezone": "Africa/Cairo",
-    "createdAt": 1789742666533,
-    "lastActive": 1789742666533,
-    "lastSentKeys": {}
-  },
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/phone-device-alpha",
-    "keys": {
-      "p256dh": "BM123...",
-      "auth": "Auth456..."
-    },
-    "preferences": {
-      "prayers": true,
-      "athkar": true,
-      "tasks": true,
-      "occasions": true
-    },
-    "coordinates": {
-      "lat": 30.0444,
-      "lng": 31.2357
-    },
-    "timezone": "Africa/Cairo",
-    "createdAt": 1789742887501,
-    "lastActive": 1789742887501,
-    "lastSentKeys": {}
-  },
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/alias-check",
-    "keys": {
-      "p256dh": "BM123...",
-      "auth": "Auth456..."
-    },
-    "preferences": {
-      "prayers": true,
-      "athkar": true,
-      "tasks": true,
-      "occasions": true
-    },
-    "coordinates": {
-      "lat": 30.0444,
-      "lng": 31.2357
-    },
-    "timezone": "Africa/Cairo",
-    "createdAt": 1789742889963,
-    "lastActive": 1789742889963,
-    "lastSentKeys": {}
-  },
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/test-nonexistent",
-    "keys": {
-      "p256dh": "BM123",
-      "auth": "auth123"
+      "p256dh": "BGdOgQnfdYxAE7eu74BanZBzxGWfWCT4WV80Tf_1i140Kndgn8h6DUqSBVLTyvVB4EAD69PBwhj7LMWZfW-X_p0",
+      "auth": "hGyho5BwO1ElPHMmwzk-Jg"
     },
     "preferences": {
       "prayers": true,
@@ -211,45 +22,45 @@
       },
       {
         "id": "rem-morning-adhkar",
-        "title": "أذكار الصباح ☀️",
+        "title": "أذكار الصباح",
         "enabled": true,
         "time": "06:30",
         "message": "حان وقت أذكار الصباح 🌿.. ابدأ يومك بنور الذكر وحفظ الله"
       },
       {
-        "id": "rem-quran",
-        "title": "ورد القرآن الكريم 📖",
-        "enabled": true,
-        "time": "13:30",
-        "message": "لا تنسَ وردك من القرآن اليوم 📖.. آيات تطيب بها الروح والقلب"
-      },
-      {
-        "id": "rem-daily-worship",
-        "title": "عبادة اليوم الموصى بها 🌿",
-        "enabled": false,
-        "time": "16:30",
-        "message": "اجعل ليومك أثراً طيباً 🌿.. تفقد عبادة اليوم المقترحة في أُنس"
-      },
-      {
         "id": "rem-evening-adhkar",
-        "title": "أذكار المساء 🌅",
+        "title": "أذكار المساء",
         "enabled": true,
         "time": "17:30",
         "message": "حان وقت أذكار المساء 🌅.. استودع يومك عند الله بحصن الذكر"
       },
       {
+        "id": "rem-quran",
+        "title": "ورد القرآن الكريم",
+        "enabled": true,
+        "time": "13:30",
+        "message": "لا تنسَ وردك من القرآن اليوم 📖.. آيات تطيب بها الروح والقلب"
+      },
+      {
         "id": "rem-sleep-adhkar",
-        "title": "أذكار النوم وسنن الليل 🌙",
+        "title": "أذكار النوم",
         "enabled": true,
         "time": "22:30",
         "message": "اقترب وقت النوم، هل قرأت أذكارك؟ 🌙.. ليلة هانئة في حفظ الرحمن"
       },
       {
         "id": "rem-witr",
-        "title": "صلاة الوتر 🤍",
+        "title": "صلاة الوتر",
         "enabled": true,
         "time": "23:00",
         "message": "ركعة تضيء ظلمة الليل 🤍.. لا تحرم نفسك أجر الوتر ولو بركعة"
+      },
+      {
+        "id": "rem-daily-worship",
+        "title": "عبادة اليوم الموصى بها",
+        "enabled": true,
+        "time": "03:20",
+        "message": "اجعل ليومك أثراً طيباً 🌿.. تفقد عبادة اليوم المقترحة في أُنس"
       }
     ],
     "coordinates": {
@@ -257,8 +68,11 @@
       "lng": 31.2357
     },
     "timezone": "Africa/Cairo",
-    "createdAt": 1790042353373,
-    "lastActive": 1790042353373,
-    "lastSentKeys": {}
+    "createdAt": 1790216518382,
+    "lastActive": 1790216585448,
+    "lastSentKeys": {
+      "prayer-fajr-2026-09-24": "2026-09-24T02:22:23.336Z",
+      "rem-rem-test-scheduled-05:23-2026-09-24": "2026-09-24T02:23:05.563Z"
+    }
   }
 ]

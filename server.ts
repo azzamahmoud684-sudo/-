@@ -107,14 +107,15 @@ function getUserLocalDateParts(date: Date, timeZone: string) {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-      hour12: false,
+      hourCycle: 'h23',
     });
     const parts = formatter.formatToParts(date);
     const getVal = (type: string) => parts.find((p) => p.type === type)?.value || '00';
     const year = parseInt(getVal('year'), 10);
     const month = parseInt(getVal('month'), 10);
     const day = parseInt(getVal('day'), 10);
-    const hour = parseInt(getVal('hour'), 10);
+    const rawHour = parseInt(getVal('hour'), 10);
+    const hour = isNaN(rawHour) ? 0 : rawHour % 24;
     const minute = parseInt(getVal('minute'), 10);
     const second = parseInt(getVal('second'), 10);
     return {
@@ -132,7 +133,7 @@ function getUserLocalDateParts(date: Date, timeZone: string) {
     const year = d.getUTCFullYear();
     const month = d.getUTCMonth() + 1;
     const day = d.getUTCDate();
-    const hour = d.getUTCHours();
+    const hour = d.getUTCHours() % 24;
     const minute = d.getUTCMinutes();
     const second = d.getUTCSeconds();
     return {
@@ -443,6 +444,32 @@ async function sendPushNotification(
 // 4. Background Scheduler Engine for Prayers & Athkar
 let lastSchedulerHeartbeat = 0;
 
+interface SchedulerLogItem {
+  time: string;
+  type: 'HEARTBEAT' | 'CHECK' | 'TRIGGER' | 'SENT' | 'ERROR' | 'PURGE';
+  device: string;
+  details: string;
+}
+
+const recentSchedulerLogs: SchedulerLogItem[] = [];
+
+function addSchedulerLog(
+  type: 'HEARTBEAT' | 'CHECK' | 'TRIGGER' | 'SENT' | 'ERROR' | 'PURGE',
+  device: string,
+  details: string
+) {
+  const item: SchedulerLogItem = {
+    time: new Date().toISOString(),
+    type,
+    device,
+    details,
+  };
+  recentSchedulerLogs.unshift(item);
+  if (recentSchedulerLogs.length > 200) {
+    recentSchedulerLogs.length = 200;
+  }
+}
+
 async function checkAndSendScheduledNotifications(): Promise<{
   checkedDevices: number;
   matchedCount: number;
@@ -464,9 +491,9 @@ async function checkAndSendScheduledNotifications(): Promise<{
   // Periodic heartbeat log every 5 minutes
   if (nowUtcMs - lastSchedulerHeartbeat >= 5 * 60 * 1000) {
     lastSchedulerHeartbeat = nowUtcMs;
-    console.log(
-      `[Scheduler Heartbeat] Active devices: ${subscriptions.length} | Checked at: ${now.toISOString()}`
-    );
+    const msg = `Active devices: ${subscriptions.length} | Checked at: ${now.toISOString()}`;
+    console.log(`[Scheduler Heartbeat] ${msg}`);
+    addSchedulerLog('HEARTBEAT', 'ALL', msg);
   }
 
   for (const sub of subscriptions) {
@@ -476,6 +503,9 @@ async function checkAndSendScheduledNotifications(): Promise<{
     const local = getUserLocalDateParts(now, userTz);
     const { year, month, day, hour, minute, dateStr } = local;
     const currentLocalMinutes = hour * 60 + minute;
+    const devSnippet =
+      sub.endpoint.substring(sub.endpoint.lastIndexOf('/') + 1, sub.endpoint.lastIndexOf('/') + 16) ||
+      sub.endpoint.substring(0, 15);
 
     if (!sub.lastSentKeys) {
       sub.lastSentKeys = {};
@@ -511,15 +541,20 @@ async function checkAndSendScheduledNotifications(): Promise<{
           const prayerMs = prayer.date.getTime();
           const diffMinutes = (nowUtcMs - prayerMs) / 60000;
 
-          // Safe trigger window: from the adhan time up to 25 minutes after
-          if (diffMinutes >= 0 && diffMinutes <= 25) {
+          // Safe trigger window: from adhan time (-1 minute tolerance up to 25 minutes after)
+          if (diffMinutes >= -1 && diffMinutes <= 25) {
             const uniqueKey = `prayer-${prayer.id}-${dateStr}`;
             if (!sub.lastSentKeys[uniqueKey]) {
               matchedCount++;
               const title = `🕌 أذان صلاة ${prayer.name}`;
               const body = `«حي على الصلاة، حي على الفلاح».. حان الآن موعد أذان ${prayer.name}، تقبل الله طاعتكم 🤍`;
               console.log(
-                `[Scheduler Trigger] Matched prayer ${prayer.name} for device (${sub.timezone}) at ${local.timeStr}`
+                `[Scheduler Trigger] Matched prayer ${prayer.name} for device ${devSnippet} (${sub.timezone}) at ${local.timeStr}`
+              );
+              addSchedulerLog(
+                'TRIGGER',
+                devSnippet,
+                `Matched prayer ${prayer.name} at local ${local.timeStr} (diff: ${diffMinutes.toFixed(1)}m)`
               );
 
               const sendRes = await sendPushNotification(sub, {
@@ -534,8 +569,10 @@ async function checkAndSendScheduledNotifications(): Promise<{
                 sub.lastSentKeys[uniqueKey] = new Date().toISOString();
                 sub.lastActive = nowUtcMs;
                 stateModified = true;
+                addSchedulerLog('SENT', devSnippet, `Delivered Adhan ${prayer.name} successfully (201)`);
               } else {
                 failureCount++;
+                addSchedulerLog('ERROR', devSnippet, `Failed Adhan ${prayer.name}: ${sendRes.error}`);
                 if (sendRes.statusCode === 404 || sendRes.statusCode === 410) {
                   deadEndpoints.push(sub.endpoint);
                 }
@@ -557,24 +594,6 @@ async function checkAndSendScheduledNotifications(): Promise<{
     for (const rem of activeReminders) {
       if (!rem || rem.enabled === false || rem.isPrayerTime) continue;
 
-      // Check category preferences
-      if (
-        (rem.id.includes('morning') ||
-          rem.id.includes('evening') ||
-          rem.id.includes('sleep') ||
-          rem.id.includes('adhkar')) &&
-        sub.preferences?.athkar === false
-      ) {
-        continue;
-      }
-
-      if (
-        (rem.id === 'rem-daily-worship' || rem.id.includes('task')) &&
-        sub.preferences?.tasks === false
-      ) {
-        continue;
-      }
-
       // Parse reminder time (HH:mm)
       const timeMatch = (rem.time || '').match(/^(\d{1,2}):(\d{2})$/);
       if (!timeMatch) continue;
@@ -582,17 +601,30 @@ async function checkAndSendScheduledNotifications(): Promise<{
       const remHour = parseInt(timeMatch[1], 10);
       const remMin = parseInt(timeMatch[2], 10);
       const reminderMinutes = remHour * 60 + remMin;
-      const diffMinutes = currentLocalMinutes - reminderMinutes;
+      let diffMinutes = currentLocalMinutes - reminderMinutes;
 
-      // Safe trigger window: from scheduled time up to 25 minutes after
-      if (diffMinutes >= 0 && diffMinutes <= 25) {
-        const uniqueKey = `rem-${rem.id}-${dateStr}`;
+      // Wrap-around for midnight transitions (e.g., scheduled 23:59 checked at 00:01)
+      if (diffMinutes < -720) {
+        diffMinutes += 1440;
+      } else if (diffMinutes > 720) {
+        diffMinutes -= 1440;
+      }
+
+      // Safe trigger window: from scheduled time (-1 minute tolerance up to 25 minutes after)
+      if (diffMinutes >= -1 && diffMinutes <= 25) {
+        // Key includes rem.time so changing the time in tests creates a fresh, triggerable window
+        const uniqueKey = `rem-${rem.id}-${rem.time}-${dateStr}`;
         if (!sub.lastSentKeys[uniqueKey]) {
           matchedCount++;
           const title = rem.title || 'أذكار وطاعات أُنس 🌙';
           const body = rem.message || 'حان وقت ذكر الله وطاعته 🤍.. تقبل الله منكم صالح الأعمال';
           console.log(
-            `[Scheduler Trigger] Matched reminder "${title}" (${rem.time}) for device (${sub.timezone}) at ${local.timeStr}`
+            `[Scheduler Trigger] Matched reminder "${title}" (${rem.time}) for device ${devSnippet} (${sub.timezone}) at ${local.timeStr} (diff: ${diffMinutes}m)`
+          );
+          addSchedulerLog(
+            'TRIGGER',
+            devSnippet,
+            `Matched reminder "${title}" at scheduled ${rem.time} (current local: ${local.timeStr})`
           );
 
           const sendRes = await sendPushNotification(sub, {
@@ -607,8 +639,10 @@ async function checkAndSendScheduledNotifications(): Promise<{
             sub.lastSentKeys[uniqueKey] = new Date().toISOString();
             sub.lastActive = nowUtcMs;
             stateModified = true;
+            addSchedulerLog('SENT', devSnippet, `Delivered reminder "${title}" successfully (201)`);
           } else {
             failureCount++;
+            addSchedulerLog('ERROR', devSnippet, `Failed reminder "${title}": ${sendRes.error}`);
             if (sendRes.statusCode === 404 || sendRes.statusCode === 410) {
               deadEndpoints.push(sub.endpoint);
             }
@@ -625,6 +659,7 @@ async function checkAndSendScheduledNotifications(): Promise<{
     console.log(
       `[Push Store] Cleaned up ${deadEndpoints.length} expired endpoints. Active devices: ${subscriptions.length} (was ${prevCount})`
     );
+    addSchedulerLog('PURGE', 'CLEANUP', `Cleaned up ${deadEndpoints.length} expired devices`);
     saveSubscriptions();
   } else if (stateModified) {
     saveSubscriptions();
@@ -834,7 +869,7 @@ async function startServer() {
   const preferencesRoutes = ['/api/push/preferences', '/api/preferences'];
   app.post(preferencesRoutes, (req: Request, res: Response) => {
     try {
-      const { endpoint, preferences, reminders, coordinates } = req.body || {};
+      const { endpoint, preferences, reminders, coordinates, timezone } = req.body || {};
       if (!endpoint) {
         res.status(400).json({ error: 'Endpoint is required' });
         return;
@@ -843,11 +878,32 @@ async function startServer() {
       const sub = subscriptions.find((s) => s && s.endpoint === endpoint);
       if (sub) {
         if (preferences) sub.preferences = { ...sub.preferences, ...preferences };
-        if (Array.isArray(reminders)) sub.reminders = reminders;
+        if (Array.isArray(reminders)) {
+          sub.reminders = reminders;
+          // Clear sent keys for today for any modified/enabled reminder so fresh user tests fire
+          if (sub.lastSentKeys) {
+            const todayStr = getUserLocalDateParts(new Date(), sub.timezone || 'Africa/Cairo').dateStr;
+            for (const r of reminders) {
+              const prefix = `rem-${r.id}-`;
+              for (const k of Object.keys(sub.lastSentKeys)) {
+                if (k.startsWith(prefix) && k.endsWith(todayStr)) {
+                  // If reminder is enabled and time was updated, allow re-trigger
+                  delete sub.lastSentKeys[k];
+                }
+              }
+            }
+          }
+        }
         if (coordinates && typeof coordinates.lat === 'number') sub.coordinates = coordinates;
+        if (timezone && typeof timezone === 'string' && timezone.length > 0) sub.timezone = timezone;
         sub.lastActive = Date.now();
         saveSubscriptions();
-        res.json({ success: true, preferences: sub.preferences });
+        addSchedulerLog(
+          'CHECK',
+          sub.endpoint.slice(-15),
+          `Preferences updated: ${sub.reminders?.length || 0} reminders, TZ: ${sub.timezone}`
+        );
+        res.json({ success: true, preferences: sub.preferences, timezone: sub.timezone });
       } else {
         res.status(404).json({ error: 'Subscription not found on server' });
       }
@@ -859,7 +915,7 @@ async function startServer() {
   // 5. Send Real Instant Test Push Notification (with aliases)
   const testRoutes = ['/api/push/test', '/api/test'];
   app.post(testRoutes, async (req: Request, res: Response) => {
-    const { endpoint, subscription, title, body } = req.body || {};
+    const { endpoint, subscription, title, body, timezone } = req.body || {};
 
     let targets = endpoint
       ? subscriptions.filter((s) => s.endpoint === endpoint)
@@ -877,7 +933,7 @@ async function startServer() {
           preferences: { prayers: true, athkar: true, tasks: true, occasions: true },
           reminders: DEFAULT_SERVER_REMINDERS,
           coordinates: { lat: 30.0444, lng: 31.2357 },
-          timezone: 'Africa/Cairo',
+          timezone: timezone || subscription?.timezone || 'Africa/Cairo',
           createdAt: Date.now(),
           lastActive: Date.now(),
           lastSentKeys: {},
@@ -887,6 +943,14 @@ async function startServer() {
         saveSubscriptions();
         targets = [adhocSub];
       }
+    }
+
+    // Sync timezone to existing target subscriptions if provided
+    if (timezone && typeof timezone === 'string' && targets.length > 0) {
+      for (const t of targets) {
+        t.timezone = timezone;
+      }
+      saveSubscriptions();
     }
 
     if (targets.length === 0 && subscriptions.length > 0) {
@@ -917,8 +981,10 @@ async function startServer() {
 
       if (result.success) {
         delivered++;
+        addSchedulerLog('SENT', sub.endpoint.slice(-15), 'Manual instant test delivered successfully (201)');
       } else {
         lastError = result.error || 'فشل إرسال الإشعار';
+        addSchedulerLog('ERROR', sub.endpoint.slice(-15), `Manual test push failed: ${lastError}`);
         if (result.statusCode === 404 || result.statusCode === 410) {
           deadEndpoints.push(sub.endpoint);
           hadExpired = true;
@@ -961,6 +1027,15 @@ async function startServer() {
     } catch (err: any) {
       res.status(500).json({ success: false, error: err?.message || 'Error running scheduler' });
     }
+  });
+
+  // 7. Get Recent Scheduler Execution Logs for full transparency
+  app.get('/api/push/scheduler/logs', (_req: Request, res: Response) => {
+    res.json({
+      success: true,
+      totalLogs: recentSchedulerLogs.length,
+      logs: recentSchedulerLogs,
+    });
   });
 
   app.get('/api/push/scheduler/status', (_req: Request, res: Response) => {

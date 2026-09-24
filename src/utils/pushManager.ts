@@ -509,6 +509,10 @@ export async function sendTestPushNotification(
     let lastErr = 'تعذر إرسال الإشعار التجريبي';
     let needsRetryWithFreshSub = false;
 
+    const detectedTimezone =
+      (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) ||
+      'Africa/Cairo';
+
     for (const ep of testEndpoints) {
       try {
         const res = await fetch(ep, {
@@ -518,6 +522,7 @@ export async function sendTestPushNotification(
           body: JSON.stringify({
             endpoint,
             subscription: payload,
+            timezone: detectedTimezone,
             title: customTitle || 'أُنس - تجربة إشعار الأذان والهاتف 🕌',
             body:
               customBody ||
@@ -595,6 +600,9 @@ export async function updatePushPreferencesOnServer(
     if (!sub) return false;
 
     const savedReminders = customReminders || loadReminders();
+    const detectedTimezone =
+      (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) ||
+      'Africa/Cairo';
     const prefEndpoints = ['/api/push/preferences', '/api/preferences'];
     for (const ep of prefEndpoints) {
       try {
@@ -607,6 +615,7 @@ export async function updatePushPreferencesOnServer(
             preferences,
             reminders: savedReminders,
             coordinates,
+            timezone: detectedTimezone,
           }),
         });
         if (res.status === 404) continue;
