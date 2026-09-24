@@ -1,7 +1,7 @@
 import React from 'react';
 import { Home, Landmark, BookOpen, Sparkles, Clock, Award, Compass } from 'lucide-react';
 
-export type NavTab = 'home' | 'seerah' | 'prayer' | 'timeline' | 'quran' | 'adhkar' | 'charity' | 'progress' | 'reminders';
+export type NavTab = 'home' | 'seerah' | 'prayer' | 'timeline' | 'quran' | 'adhkar' | 'charity' | 'progress' | 'reminders' | 'names';
 
 interface BottomNavProps {
   activeTab: NavTab;

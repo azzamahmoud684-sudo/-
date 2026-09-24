@@ -27,6 +27,8 @@ import { HomeNearestOccasionCard } from './components/HomeNearestOccasionCard';
 import { OccasionsModal } from './components/OccasionsModal';
 import { DailyTasksModal } from './components/DailyTasksModal';
 import { SeerahSection } from './components/SeerahSection';
+import { AllahNamesView } from './components/AllahNamesView';
+import { loadAllahNamesProgress } from './utils/allahNamesStorage';
 import {
   loadUserProgress,
   saveUserProgress,
@@ -48,6 +50,7 @@ import { trackPageView } from './utils/analytics';
 export default function App() {
   const [progress, setProgress] = useState<UserProgress>(() => loadUserProgress());
   const [reminders, setReminders] = useState<ReminderSetting[]>(() => loadReminders());
+  const [allahNamesProgress, setAllahNamesProgress] = useState(() => loadAllahNamesProgress());
   const [activeTab, setActiveTab] = useState<NavTab>('home');
 
   // Quran Audio Reciter state
@@ -94,6 +97,7 @@ export default function App() {
   useEffect(() => {
     const tabTitles: Record<NavTab, string> = {
       home: 'الرئيسية | أُنس',
+      names: 'أسماء الله الحسنى | أُنس',
       seerah: 'في رحاب السيرة | أُنس',
       prayer: 'مواقيت الصلاة والقبلة | أُنس',
       timeline: 'الجدول اليومي | أُنس',
@@ -105,6 +109,10 @@ export default function App() {
     };
     const title = tabTitles[activeTab] || document.title;
     trackPageView(activeTab === 'home' ? '/' : `/${activeTab}`, title);
+
+    if (activeTab === 'home') {
+      setAllahNamesProgress(loadAllahNamesProgress());
+    }
   }, [activeTab]);
 
   // Tasks handlers
@@ -446,13 +454,7 @@ export default function App() {
             {/* 3. إنجاز اليوم (0 من 14 عبادة) */}
             <HomeDailyAchievementBar progress={progress} />
 
-            {/* 4. متابعة الورد: وردي اليوم (0 من 4 صفحات) */}
-            <HomeDailyWirdCard
-              progress={progress}
-              onOpenQuran={() => setActiveTab('quran')}
-            />
-
-            {/* 5. الصلوات الخمس + الوتر وقيام الليل وموعد الصلاة القادمة */}
+            {/* 4. الصلوات الخمس + الوتر وقيام الليل وموعد الصلاة القادمة */}
             <HomePrayersCard
               prayersCompleted={progress.prayersCompletedToday}
               onTogglePrayer={handleTogglePrayer}
@@ -460,70 +462,111 @@ export default function App() {
               onOpenReminders={() => setActiveTab('reminders')}
             />
 
-            {/* 6. Grid of Cards: 🌿 في رحاب السيرة, 📿 التسبيح, 📝 مهامي اليومية, ☀️ الأذكار, 🌙 المناسبات الإسلامية, 🤍 التبرع, 📖 القرآن */}
-            <HomeDashboardGrid
-              cards={[
-                {
-                  id: 'seerah',
-                  icon: '🌿',
-                  title: 'في رحاب السيرة',
-                  description: 'رحلة تفاعلية نتعرّف فيها على سيرة النبي ﷺ، خطوة بخطوة.',
-                  badge: '18 محطة مباركة',
-                  onClick: () => {
-                    setSelectedSeerahEventId(null);
-                    setActiveTab('seerah');
-                  },
-                },
-                {
-                  id: 'tasbeeh',
-                  icon: '📿',
-                  title: 'التسبيح',
-                  description: 'السبحة الإلكترونية الذكية مع الأوراد والاهتزاز وحفظ العداد.',
-                  badge: `${progress.totalTasbeehCount} تسبيحة اليوم`,
-                  onClick: () => setIsTasbeehOpen(true),
-                },
-                {
-                  id: 'tasks',
-                  icon: '📝',
-                  title: 'مهامي اليومية',
-                  description: 'جدول مهامك وطاعاتك اليومية الخاصة مع متابعة الإنجاز.',
-                  badge: `${todayTasks.filter((t) => t.isCompleted).length}/${todayTasks.length} منجز`,
-                  onClick: () => setIsTasksModalOpen(true),
-                },
-                {
-                  id: 'adhkar',
-                  icon: '☀️',
-                  title: 'الأذكار',
-                  description: 'أذكار الصباح والمساء، أذكار بعد الصلاة، وأذكار النوم المأثورة.',
-                  badge: 'أذكار اليوم والليلة',
-                  onClick: () => setActiveTab('adhkar'),
-                },
-                {
-                  id: 'occasions',
-                  icon: '🌙',
-                  title: 'المناسبات الإسلامية',
-                  description: 'عدّ تنازلي للمواسم المباركة والأيام الفاضلة ومواعيد الخير.',
-                  badge: 'مواسم الخير',
-                  onClick: () => setIsOccasionsModalOpen(true),
-                },
-                {
-                  id: 'charity',
-                  icon: '🤍',
-                  title: 'التبرع',
-                  description: 'أبواب الخير والمساهمة في الصدقات عبر المنصات الرسمية المعتمدة.',
-                  badge: 'باب الصدقة',
-                  onClick: () => setActiveTab('charity'),
-                },
-                {
-                  id: 'quran',
-                  icon: '📖',
-                  title: 'القرآن',
-                  description: 'المصحف الشريف وتتبع الورد اليومي مع تلاوة بصوت كبار القراء.',
-                  badge: `${progress.quranPagesReadToday} صفحات اليوم`,
-                  onClick: () => setActiveTab('quran'),
-                },
-              ]}
+            {/* 5. متابعة الورد: وردي اليوم (0 من 4 صفحات) */}
+            <HomeDailyWirdCard
+              progress={progress}
+              onOpenQuran={() => setActiveTab('quran')}
             />
+
+            {/* 6. الأوراد والعبادات اليومية */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 px-1">
+                <span className="w-1.5 h-4 bg-[#2D6A4F] rounded-full" />
+                <h2 className="text-sm sm:text-base font-bold font-['Tajawal'] text-[#1F2421]">
+                  الأوراد والعبادات اليومية
+                </h2>
+              </div>
+
+              <HomeDashboardGrid
+                cards={[
+                  {
+                    id: 'quran',
+                    icon: '📖',
+                    title: 'القرآن الكريم',
+                    description: 'المصحف الشريف وتتبع الورد اليومي مع تلاوة بصوت كبار القراء.',
+                    badge: `${progress.quranPagesReadToday} صفحات اليوم`,
+                    onClick: () => setActiveTab('quran'),
+                  },
+                  {
+                    id: 'adhkar',
+                    icon: '☀️',
+                    title: 'الأذكار',
+                    description: 'أذكار الصباح والمساء، أذكار بعد الصلاة، وأذكار النوم المأثورة.',
+                    badge: 'أذكار اليوم والليلة',
+                    onClick: () => setActiveTab('adhkar'),
+                  },
+                  {
+                    id: 'tasbeeh',
+                    icon: '📿',
+                    title: 'التسبيح',
+                    description: 'السبحة الإلكترونية الذكية مع الأوراد والاهتزاز وحفظ العداد.',
+                    badge: `${progress.totalTasbeehCount} تسبيحة اليوم`,
+                    onClick: () => setIsTasbeehOpen(true),
+                  },
+                  {
+                    id: 'tasks',
+                    icon: '📝',
+                    title: 'مهامي اليومية',
+                    description: 'جدول مهامك وطاعاتك اليومية الخاصة مع متابعة الإنجاز.',
+                    badge: `${todayTasks.filter((t) => t.isCompleted).length}/${todayTasks.length} منجز`,
+                    onClick: () => setIsTasksModalOpen(true),
+                  },
+                  {
+                    id: 'charity',
+                    icon: '🤍',
+                    title: 'التبرع والصدقة',
+                    description: 'أبواب الخير والمساهمة في الصدقات عبر المنصات الرسمية المعتمدة.',
+                    badge: 'باب الصدقة',
+                    onClick: () => setActiveTab('charity'),
+                  },
+                ]}
+              />
+            </div>
+
+            {/* 7. في رحاب السيرة وأسماء الله الحسنى والمناسبات (في الآخر) */}
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center gap-2 px-1">
+                <span className="w-1.5 h-4 bg-amber-600 rounded-full" />
+                <h2 className="text-sm sm:text-base font-bold font-['Tajawal'] text-[#1F2421]">
+                  رحاب الإيمان والتدبر
+                </h2>
+              </div>
+
+              <HomeDashboardGrid
+                cards={[
+                  {
+                    id: 'seerah',
+                    icon: '🌿',
+                    title: 'في رحاب السيرة',
+                    description: 'رحلة تفاعلية نتعرّف فيها على سيرة النبي ﷺ، خطوة بخطوة.',
+                    badge: '18 محطة مباركة',
+                    onClick: () => {
+                      setSelectedSeerahEventId(null);
+                      setActiveTab('seerah');
+                    },
+                  },
+                  {
+                    id: 'allah-names',
+                    icon: '✨',
+                    title: 'أسماء الله الحسنى',
+                    description: 'رحلة نتعرّف فيها إلى أسماء الله ونتدبر معانيها وآثارها.',
+                    badge:
+                      allahNamesProgress.completedIds.length > 0
+                        ? `${allahNamesProgress.completedIds.length}/99 تدبّرتها`
+                        : '99 اسماً مباركاً',
+                    onClick: () => setActiveTab('names'),
+                  },
+                  {
+                    id: 'occasions',
+                    icon: '🌙',
+                    title: 'المناسبات الإسلامية',
+                    description: 'عدّ تنازلي للمواسم المباركة والأيام الفاضلة ومواعيد الخير.',
+                    badge: 'مواسم الخير',
+                    onClick: () => setIsOccasionsModalOpen(true),
+                  },
+                ]}
+              />
+            </div>
 
             {/* 4. Small elegant Nearest Occasion Card */}
             <HomeNearestOccasionCard onOpenOccasions={() => setIsOccasionsModalOpen(true)} />
@@ -586,6 +629,10 @@ export default function App() {
             onOpenQuran={() => setActiveTab('quran')}
             onOpenWorship={() => handleStartActivity('worship')}
           />
+        )}
+
+        {activeTab === 'names' && (
+          <AllahNamesView onBack={() => setActiveTab('home')} />
         )}
 
         {activeTab === 'seerah' && (
